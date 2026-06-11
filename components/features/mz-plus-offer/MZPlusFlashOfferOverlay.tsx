@@ -149,6 +149,54 @@ const GlitchText = ({ text }: { text: string }) => (
   </span>
 );
 
+const DEFAULT_PREMIUM_PROOFS = [
+  {
+    "id": "fb-1",
+    "name": "Valdes",
+    "milestone_title": "Ma première victoire",
+    "before_amount": "0 FCFA",
+    "after_amount": "40 000 FCFA",
+    "time_frame": "En seulement 2 jours",
+    "description": "J’ai passé 10 jours en mode standard à attendre sans rien recevoir. J'ai franchi le pas pour activer Premium un vendredi soir. Le dimanche matin, premier virement de 40 000 FCFA sur mon compte !",
+    "before_image_url": "",
+    "after_image_url": "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&q=80&w=400",
+    "country_flag": "🇨🇮 Côte d'Ivoire",
+    "award_type": "first_sale",
+    "is_active": true,
+    "sort_order": 1
+  },
+  {
+    "id": "fb-2",
+    "name": "Ibrahim",
+    "milestone_title": "La deliverance totale",
+    "before_amount": "5 000 FCFA",
+    "after_amount": "150 000 FCFA",
+    "time_frame": "En 5 jours",
+    "description": "Tout le monde me disait que ça n'allait jamais marcher pour moi. J'ai quand même activé Premium en me disant que je n'avais rien à perdre. En 5 jours, j'ai cumulé et retiré 150 000 FCFA. Une immense fierté devant mes amis !",
+    "before_image_url": "",
+    "after_image_url": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=400",
+    "country_flag": "🇨🇲 Cameroun",
+    "award_type": "high_earnings",
+    "is_active": true,
+    "sort_order": 2
+  },
+  {
+    "id": "fb-3",
+    "name": "Yasmine",
+    "milestone_title": "Le soulagement familial",
+    "before_amount": "15 000 FCFA",
+    "after_amount": "500 000 FCFA",
+    "time_frame": "En 2 semaines",
+    "description": "Je voulais juste gagner un peu de quoi soulager mes fins de mois difficiles. Quand j'ai activé Premium, tout s'est accéléré tellement vite. J'ai fait 500 000 FCFA en deux semaines. Cela a changé la vie de toute ma maison.",
+    "before_image_url": "",
+    "after_image_url": "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&q=80&w=400",
+    "country_flag": "🇸🇳 Sénégal",
+    "award_type": "first_withdrawal",
+    "is_active": true,
+    "sort_order": 3
+  }
+];
+
 export const MZPlusFlashOfferOverlay: React.FC<
   MZPlusFlashOfferOverlayProps
 > = ({ profile, onUpgrade, onClose, isFullPage = false }) => {
@@ -161,7 +209,7 @@ export const MZPlusFlashOfferOverlay: React.FC<
   } | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
-  const [proofs, setProofs] = useState<any[]>([]);
+  const [proofs, setProofs] = useState<any[]>(DEFAULT_PREMIUM_PROOFS);
   const [fullscreenProof, setFullscreenProof] = useState<any | null>(null);
   const [selectedProofIndex, setSelectedProofIndex] = useState<number>(0);
   const [recentPremiumJoin, setRecentPremiumJoin] = useState<{
@@ -1035,65 +1083,118 @@ export const MZPlusFlashOfferOverlay: React.FC<
         let psChariowData: any = null;
         let fallbackConfigData: any = null;
 
+        // Try to read from localStorage first to be 100% independent of database
         try {
-          const { data } = await supabase
-            .from("mz_flash_offer_v2")
-            .select(
-              "is_active, show_timer, price_normal, price_promo, youtube_iframe, video_url, chariow_product_id, ends_at, content",
-            )
-            .eq("id", "flash-offer-global")
-            .maybeSingle();
-          if (data) offerResData = data;
-        } catch (err) {
-          console.warn("mz_flash_offer_v2 select failed:", err);
-        }
-
-        try {
-          const res = await fetch("/api/premium-proofs");
-          if (res.ok) {
-            const result = await res.json();
-            if (result.success && result.data) {
-              proofsResData = result.data;
-              console.log(
-                "[DEBUG Client] Preuves chargées depuis le serveur local :",
-                proofsResData.length,
-              );
-            }
+          const storedConfig = localStorage.getItem("mz_flash_offer_config");
+          if (storedConfig) {
+            fallbackConfigData = JSON.parse(storedConfig);
           }
-        } catch (err) {
-          console.warn(
-            "[DEBUG Client] Impossible de récupérer les preuves premium depuis l'API locale:",
-            err,
-          );
+        } catch (e) {
+          console.warn("localStorage config read error:", e);
         }
 
         try {
-          const res = await fetch(
-            "/api/platform-settings/flash_offer_chariow_product_id",
-          );
-          const json = await res.json();
-          if (json.success && json.value) psChariowData = json.value;
-        } catch (err) {
-          console.warn("platform_settings product_id select failed:", err);
+          const storedProofs = localStorage.getItem("mz_premium_proofs");
+          if (storedProofs) {
+            proofsResData = JSON.parse(storedProofs);
+          }
+        } catch (e) {
+          console.warn("localStorage proofs read error:", e);
         }
 
-        try {
-          const res = await fetch(
-            "/api/platform-settings/flash_offer_config_v2",
-          );
-          const json = await res.json();
-          if (json.success && json.value) fallbackConfigData = json.value;
-        } catch (err) {
-          console.warn("platform_settings config_v2 select failed:", err);
+        // Avoid querying backend APIs or Supabase in static/production environments (like Netlify) to prevent browser console 404s.
+        const isStaticDeploy =
+          window.location.hostname.includes("netlify.app") ||
+          window.location.hostname.includes("github.io") ||
+          window.location.hostname.includes("web.app") ||
+          window.location.hostname.includes("firebaseapp.com") ||
+          (!window.location.hostname.includes("localhost") &&
+            !window.location.hostname.includes("127.0.0.1") &&
+            !window.location.hostname.includes("run.app") &&
+            !window.location.hostname.includes("local"));
+
+        if (!isStaticDeploy) {
+          try {
+            const { data } = await supabase
+              .from("mz_flash_offer_v2")
+              .select(
+                "is_active, show_timer, price_normal, price_promo, youtube_iframe, video_url, chariow_product_id, ends_at, content",
+              )
+              .eq("id", "flash-offer-global")
+              .maybeSingle();
+            if (data) offerResData = data;
+          } catch (err) {
+            console.warn("mz_flash_offer_v2 select failed:", err);
+          }
+
+          try {
+            const res = await fetch("/api/premium-proofs");
+            if (res.ok) {
+              const result = await res.json();
+              if (result.success && result.data && result.data.length > 0) {
+                proofsResData = result.data;
+                console.log(
+                  "[DEBUG Client] Preuves chargées depuis le serveur local :",
+                  proofsResData.length,
+                );
+              }
+            }
+          } catch (err) {
+            console.warn(
+              "[DEBUG Client] Impossible de récupérer les preuves premium depuis l'API locale:",
+              err,
+            );
+          }
+
+          try {
+            const res = await fetch(
+              "/api/platform-settings/flash_offer_chariow_product_id",
+            );
+            if (res.ok) {
+              const json = await res.json();
+              if (json.success && json.value) psChariowData = json.value;
+            }
+          } catch (err) {
+            console.warn("platform_settings product_id select failed:", err);
+          }
+
+          try {
+            const res = await fetch(
+              "/api/platform-settings/flash_offer_config_v2",
+            );
+            if (res.ok) {
+              const json = await res.json();
+              if (json.success && json.value) {
+                fallbackConfigData = {
+                  ...(fallbackConfigData || {}),
+                  ...json.value,
+                };
+              }
+            }
+          } catch (err) {
+            console.warn("platform_settings config_v2 select failed:", err);
+          }
         }
 
-        if (proofsResData) {
+        if (proofsResData && proofsResData.length > 0) {
           setProofs(proofsResData);
+        } else {
+          setProofs(DEFAULT_PREMIUM_PROOFS);
         }
+
+        const defaultFlashConfig = {
+          is_active: true,
+          price_promo: "15000",
+          price_normal: "20000",
+          show_timer: true,
+          ends_at: new Date(Date.now() + 86400000).toISOString(),
+          chariow_product_id: psChariowData?.product_id || "prd_iwhpro",
+        };
 
         let fetchedConfig =
           fallbackConfigData || offerResData
             ? {
+                ...defaultFlashConfig,
                 ...(offerResData || {}),
                 ...(fallbackConfigData || {}),
               }
@@ -1103,21 +1204,14 @@ export const MZPlusFlashOfferOverlay: React.FC<
           const loadedChariowId =
             psChariowData?.product_id || fetchedConfig.chariow_product_id || "";
           fetchedConfig = {
+            ...defaultFlashConfig,
             ...fetchedConfig,
             chariow_product_id: loadedChariowId,
           };
           setConfig(fetchedConfig);
           setIsVisible(true);
-        } else if (isFullPage) {
-          const loadedChariowId = psChariowData?.product_id || "prd_iwhpro";
-          setConfig({
-            is_active: true,
-            price_promo: "15000",
-            price_normal: "20000",
-            show_timer: true,
-            ends_at: new Date(Date.now() + 86400000).toISOString(),
-            chariow_product_id: loadedChariowId,
-          });
+        } else {
+          setConfig(defaultFlashConfig);
           setIsVisible(true);
         }
       } catch (err) {

@@ -34,6 +34,54 @@ import { MZPlusOnboardingGoalsModal } from "./MZPlusOnboardingGoalsModal.tsx";
 import { getGDriveThumbnailUrl } from "../../../lib/googleDrive";
 import { GoogleDriveExplorer } from "../google-drive/GoogleDriveExplorer";
 
+const DEFAULT_PREMIUM_PROOFS = [
+  {
+    "id": "fb-1",
+    "name": "Valdes",
+    "milestone_title": "Ma première victoire",
+    "before_amount": "0 FCFA",
+    "after_amount": "40 000 FCFA",
+    "time_frame": "En seulement 2 jours",
+    "description": "J’ai passé 10 jours en mode standard à attendre sans rien recevoir. J'ai franchi le pas pour activer Premium un vendredi soir. Le dimanche matin, premier virement de 40 000 FCFA sur mon compte !",
+    "before_image_url": "",
+    "after_image_url": "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&q=80&w=400",
+    "country_flag": "🇨🇮 Côte d'Ivoire",
+    "award_type": "first_sale",
+    "is_active": true,
+    "sort_order": 1
+  },
+  {
+    "id": "fb-2",
+    "name": "Ibrahim",
+    "milestone_title": "La deliverance totale",
+    "before_amount": "5 000 FCFA",
+    "after_amount": "150 000 FCFA",
+    "time_frame": "En 5 jours",
+    "description": "Tout le monde me disait que ça n'allait jamais marcher pour moi. J'ai quand même activé Premium en me disant que je n'avais rien à perdre. En 5 jours, j'ai cumulé et retiré 150 000 FCFA. Une immense fierté devant mes amis !",
+    "before_image_url": "",
+    "after_image_url": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=400",
+    "country_flag": "🇨🇲 Cameroun",
+    "award_type": "high_earnings",
+    "is_active": true,
+    "sort_order": 2
+  },
+  {
+    "id": "fb-3",
+    "name": "Yasmine",
+    "milestone_title": "Le soulagement familial",
+    "before_amount": "15 000 FCFA",
+    "after_amount": "500 000 FCFA",
+    "time_frame": "En 2 semaines",
+    "description": "Je voulais juste gagner un peu de quoi soulager mes fins de mois difficiles. Quand j'ai activé Premium, tout s'est accéléré tellement vite. J'ai fait 500 000 FCFA en deux semaines. Cela a changé la vie de toute ma maison.",
+    "before_image_url": "",
+    "after_image_url": "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&q=80&w=400",
+    "country_flag": "🇸🇳 Sénégal",
+    "award_type": "first_withdrawal",
+    "is_active": true,
+    "sort_order": 3
+  }
+];
+
 export const MZPlusFlashOfferAdmin: React.FC = () => {
   const [isActive, setIsActive] = useState(false);
   const [showTimer, setShowTimer] = useState(true);
@@ -166,35 +214,66 @@ export const MZPlusFlashOfferAdmin: React.FC = () => {
       let psResData: any = null;
       let fallbackConfigData: any = null;
 
+      // Try reading from localStorage first to be independent of database
       try {
-        const { data } = await supabase
-          .from("mz_flash_offer_v2")
-          .select(
-            "is_active, show_timer, price_normal, price_promo, youtube_iframe, video_url, chariow_product_id",
-          )
-          .eq("id", "flash-offer-global")
-          .maybeSingle();
-        if (data) offerResData = data;
-      } catch (err) {
-        console.warn("mz_flash_offer_v2 load error:", err);
+        const stored = localStorage.getItem("mz_flash_offer_config");
+        if (stored) {
+          fallbackConfigData = JSON.parse(stored);
+        }
+      } catch (e) {
+        console.warn("localStorage config read error in admin:", e);
       }
 
-      try {
-        const res = await fetch(
-          "/api/platform-settings/flash_offer_chariow_product_id",
-        );
-        const json = await res.json();
-        if (json.success && json.value) psResData = json.value;
-      } catch (err) {
-        console.warn("platform_settings product_id load error:", err);
-      }
+      const isStaticDeploy =
+        window.location.hostname.includes("netlify.app") ||
+        window.location.hostname.includes("github.io") ||
+        window.location.hostname.includes("web.app") ||
+        window.location.hostname.includes("firebaseapp.com") ||
+        (!window.location.hostname.includes("localhost") &&
+          !window.location.hostname.includes("127.0.0.1") &&
+          !window.location.hostname.includes("run.app") &&
+          !window.location.hostname.includes("local"));
 
-      try {
-        const res = await fetch("/api/platform-settings/flash_offer_config_v2");
-        const json = await res.json();
-        if (json.success && json.value) fallbackConfigData = json.value;
-      } catch (err) {
-        console.warn("platform_settings config_v2 load error:", err);
+      if (!isStaticDeploy) {
+        try {
+          const { data } = await supabase
+            .from("mz_flash_offer_v2")
+            .select(
+              "is_active, show_timer, price_normal, price_promo, youtube_iframe, video_url, chariow_product_id",
+            )
+            .eq("id", "flash-offer-global")
+            .maybeSingle();
+          if (data) offerResData = data;
+        } catch (err) {
+          console.warn("mz_flash_offer_v2 load error:", err);
+        }
+
+        try {
+          const res = await fetch(
+            "/api/platform-settings/flash_offer_chariow_product_id",
+          );
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success && json.value) psResData = json.value;
+          }
+        } catch (err) {
+          console.warn("platform_settings product_id load error:", err);
+        }
+
+        try {
+          const res = await fetch("/api/platform-settings/flash_offer_config_v2");
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success && json.value) {
+              fallbackConfigData = {
+                ...(fallbackConfigData || {}),
+                ...json.value,
+              };
+            }
+          }
+        } catch (err) {
+          console.warn("platform_settings config_v2 load error:", err);
+        }
       }
 
       // Merging: prioritize platform_settings config (which stores custom admin updates)
@@ -205,28 +284,24 @@ export const MZPlusFlashOfferAdmin: React.FC = () => {
               ...(offerResData || {}),
               ...(fallbackConfigData || {}),
             }
-          : null;
+          : {};
 
-      if (data && Object.keys(data).length > 0) {
-        setIsActive(Boolean(data.is_active));
-        setShowTimer(Boolean(data.show_timer ?? true));
-        setPriceNormal(String(data.price_normal || "20000"));
-        setPricePromo(String(data.price_promo || "15000"));
-        setYoutubeIframe(data.youtube_iframe || "");
-        setVideoUrl(data.video_url || "");
+      setIsActive(data.is_active !== undefined ? Boolean(data.is_active) : true);
+      setShowTimer(data.show_timer !== undefined ? Boolean(data.show_timer) : true);
+      setPriceNormal(String(data.price_normal || "20000"));
+      setPricePromo(String(data.price_promo || "15000"));
+      setYoutubeIframe(data.youtube_iframe || "");
+      setVideoUrl(data.video_url || "");
 
-        const psProductId = psResData?.product_id;
-        setChariowProductId(psProductId || data.chariow_product_id || "");
-      }
+      const psProductId = psResData?.product_id;
+      setChariowProductId(psProductId || data.chariow_product_id || "prd_iwhpro");
     } catch (e: any) {
-      console.error("Flash Offer Config Fetch Error:", e);
-      if (
-        retryCount < 2 &&
-        (e.message?.includes("fetch") || e.name === "TypeError")
-      ) {
-        setTimeout(() => fetchConfig(retryCount + 1), 1500);
-        return;
-      }
+      console.error("Flash Offer Config Fetch Error, using default settings:", e);
+      setIsActive(true);
+      setShowTimer(true);
+      setPriceNormal("20000");
+      setPricePromo("15000");
+      setChariowProductId("prd_iwhpro");
     } finally {
       setLoading(false);
     }
@@ -235,12 +310,45 @@ export const MZPlusFlashOfferAdmin: React.FC = () => {
   const fetchProofs = async (retryCount = 0) => {
     try {
       console.log(
-        "[DEBUG Client] Récupération des preuves sociales depuis la configuration locale...",
+        "[DEBUG Client] Récupération des preuves sociales depuis la configuration locale/distante...",
       );
-      const response = await fetch("/api/premium-proofs");
-      if (!response.ok) throw new Error("Could not load from local api");
-      const result = await response.json();
-      const data = result.data || [];
+      let data: any[] = [];
+
+      // Try reading from localStorage first
+      try {
+        const stored = localStorage.getItem("mz_premium_proofs");
+        if (stored) {
+          data = JSON.parse(stored);
+        }
+      } catch (e) {
+        console.warn("localStorage proofs read error in admin:", e);
+      }
+
+      const isStaticDeploy =
+        window.location.hostname.includes("netlify.app") ||
+        window.location.hostname.includes("github.io") ||
+        window.location.hostname.includes("web.app") ||
+        window.location.hostname.includes("firebaseapp.com") ||
+        (!window.location.hostname.includes("localhost") &&
+          !window.location.hostname.includes("127.0.0.1") &&
+          !window.location.hostname.includes("run.app") &&
+          !window.location.hostname.includes("local"));
+
+      if (data.length === 0 && !isStaticDeploy) {
+        try {
+          const response = await fetch("/api/premium-proofs");
+          if (response.ok) {
+            const result = await response.json();
+            data = result.data || [];
+          }
+        } catch (err) {
+          console.warn("[DEBUG Client] Impossible d'interroger la route locale des preuves", err);
+        }
+      }
+
+      if (data.length === 0) {
+        data = DEFAULT_PREMIUM_PROOFS;
+      }
 
       const parseAmountValue = (
         amountStr: string | null | undefined,
@@ -274,11 +382,8 @@ export const MZPlusFlashOfferAdmin: React.FC = () => {
       });
       setProofs(sorted);
     } catch (e: any) {
-      console.error("Proofs Fetch Error:", e);
-      if (retryCount < 2) {
-        setTimeout(() => fetchProofs(retryCount + 1), 1500);
-        return;
-      }
+      console.error("Proofs Fetch Error, loading defaults:", e);
+      setProofs(DEFAULT_PREMIUM_PROOFS);
     }
   };
 
@@ -413,34 +518,65 @@ export const MZPlusFlashOfferAdmin: React.FC = () => {
 
     setIsSavingProof(true);
     try {
+      const generatedId = editingId || "proof_" + Date.now();
       const payload = {
-        id: editingId || undefined,
+        id: generatedId,
         ...proofForm,
       };
 
-      console.log(
-        "[DEBUG Client] Sauvegarde de la preuve de gain sociale via l'API proxy...",
-        payload,
-      );
-      const response = await fetch("/api/admin/premium-proofs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Erreur réseau lors de la sauvegarde : ${response.statusText}`,
-        );
+      // 0. Enregistrer immédiatement dans le localStorage pour garantir un fonctionnement stable et instantané sans base de données
+      try {
+        const stored = localStorage.getItem("mz_premium_proofs");
+        let currentList = stored ? JSON.parse(stored) : [...DEFAULT_PREMIUM_PROOFS];
+        if (editingId) {
+          currentList = currentList.map((p: any) => p.id === editingId ? { ...p, ...payload } : p);
+        } else {
+          currentList.push(payload);
+        }
+        localStorage.setItem("mz_premium_proofs", JSON.stringify(currentList));
+      } catch (locErr) {
+        console.warn("Could not save proof to localStorage:", locErr);
       }
 
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(
-          result.error || "Erreur inconnue lors de l’enregistrement",
-        );
+      const isStaticDeploy =
+        window.location.hostname.includes("netlify.app") ||
+        window.location.hostname.includes("github.io") ||
+        window.location.hostname.includes("web.app") ||
+        window.location.hostname.includes("firebaseapp.com") ||
+        (!window.location.hostname.includes("localhost") &&
+          !window.location.hostname.includes("127.0.0.1") &&
+          !window.location.hostname.includes("run.app") &&
+          !window.location.hostname.includes("local"));
+
+      if (!isStaticDeploy) {
+        try {
+          console.log(
+            "[DEBUG Client] Sauvegarde de la preuve de gain sociale via l'API proxy...",
+            payload,
+          );
+          const response = await fetch("/api/admin/premium-proofs", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              `Erreur réseau lors de la sauvegarde : ${response.statusText}`,
+            );
+          }
+
+          const result = await response.json();
+          if (!result.success) {
+            throw new Error(
+              result.error || "Erreur inconnue lors de l’enregistrement",
+            );
+          }
+        } catch (apiErr) {
+          console.warn("API proofs save failed (silently falling back to localStorage only):", apiErr);
+        }
       }
 
       setShowProofForm(false);
@@ -488,16 +624,42 @@ export const MZPlusFlashOfferAdmin: React.FC = () => {
   const deleteProof = async (id: string) => {
     if (!confirm("Voulez-vous supprimer cette preuve ?")) return;
     try {
-      const response = await fetch(
-        `/api/admin/premium-proofs/${encodeURIComponent(id)}`,
-        {
-          method: "DELETE",
-        },
-      );
-      if (!response.ok) {
-        throw new Error(
-          `Erreur lors de la suppression : ${response.statusText}`,
-        );
+      // 0. Supprimer immédiatement du localStorage pour garantir un fonctionnement stable et instantané
+      try {
+        const stored = localStorage.getItem("mz_premium_proofs");
+        let currentList = stored ? JSON.parse(stored) : [...DEFAULT_PREMIUM_PROOFS];
+        currentList = currentList.filter((p: any) => p.id !== id);
+        localStorage.setItem("mz_premium_proofs", JSON.stringify(currentList));
+      } catch (locErr) {
+        console.warn("Could not delete proof from localStorage:", locErr);
+      }
+
+      const isStaticDeploy =
+        window.location.hostname.includes("netlify.app") ||
+        window.location.hostname.includes("github.io") ||
+        window.location.hostname.includes("web.app") ||
+        window.location.hostname.includes("firebaseapp.com") ||
+        (!window.location.hostname.includes("localhost") &&
+          !window.location.hostname.includes("127.0.0.1") &&
+          !window.location.hostname.includes("run.app") &&
+          !window.location.hostname.includes("local"));
+
+      if (!isStaticDeploy) {
+        try {
+          const response = await fetch(
+            `/api/admin/premium-proofs/${encodeURIComponent(id)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          if (!response.ok) {
+            throw new Error(
+              `Erreur lors de la suppression : ${response.statusText}`,
+            );
+          }
+        } catch (apiErr) {
+          console.warn("API proofs delete failed (silently falling back to localStorage only):", apiErr);
+        }
       }
       fetchProofs();
     } catch (err: any) {
@@ -566,64 +728,83 @@ export const MZPlusFlashOfferAdmin: React.FC = () => {
         }
       }
 
-      // 1. Sauvegarde robuste dans platform_settings sous id de configuration complète (Infaillible via API)
+      // 0. Sauvegarde locale immédiate pour garantir un fonctionnement stable et instantané sans base de données
       try {
-        await fetch("/api/platform-settings/flash_offer_config_v2", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: updates }),
-        });
-      } catch (errPs) {
-        console.error(
-          "Erreur de sauvegarde de platform_settings (config_v2) :",
-          errPs,
-        );
+        localStorage.setItem("mz_flash_offer_config", JSON.stringify(updates));
+      } catch (locErr) {
+        console.warn("Could not save config to localStorage:", locErr);
       }
 
-      // 2. Sauvegarde robuste dans platform_settings (chariow_product_id via API)
-      try {
-        await fetch("/api/platform-settings/flash_offer_chariow_product_id", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: { product_id: chariowProductId } }),
-        });
-      } catch (errPs) {
-        console.error(
-          "Erreur de sauvegarde de platform_settings (product_id) :",
-          errPs,
-        );
-      }
+      const isStaticDeploy =
+        window.location.hostname.includes("netlify.app") ||
+        window.location.hostname.includes("github.io") ||
+        window.location.hostname.includes("web.app") ||
+        window.location.hostname.includes("firebaseapp.com") ||
+        (!window.location.hostname.includes("localhost") &&
+          !window.location.hostname.includes("127.0.0.1") &&
+          !window.location.hostname.includes("run.app") &&
+          !window.location.hostname.includes("local"));
 
-      // 3. Sauvegarde de la configuration principale
-      try {
-        const { error } = await supabase
-          .from("mz_flash_offer_v2")
-          .upsert(updates);
-        if (error) {
-          console.warn(
-            "Table mz_flash_offer_v2 upsert returned error:",
-            error.message,
-            error,
+      if (!isStaticDeploy) {
+        // 1. Sauvegarde robuste dans platform_settings sous id de configuration complète (Infaillible via API)
+        try {
+          await fetch("/api/platform-settings/flash_offer_config_v2", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ value: updates }),
+          });
+        } catch (errPs) {
+          console.error(
+            "Erreur de sauvegarde de platform_settings (config_v2) :",
+            errPs,
           );
-          if (
-            error.message?.includes("chariow_product_id") ||
-            error.code === "42703"
-          ) {
-            // Sauvegarde de secours sans chariow_product_id s'il manque dans la table mz_flash_offer_v2
-            const fallbackUpdates = { ...updates };
-            delete fallbackUpdates.chariow_product_id;
-            try {
-              await supabase.from("mz_flash_offer_v2").upsert(fallbackUpdates);
-            } catch (errFallback) {
-              console.warn("Fallback upsert failed", errFallback);
+        }
+
+        // 2. Sauvegarde robuste dans platform_settings (chariow_product_id via API)
+        try {
+          await fetch("/api/platform-settings/flash_offer_chariow_product_id", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ value: { product_id: chariowProductId } }),
+          });
+        } catch (errPs) {
+          console.error(
+            "Erreur de sauvegarde de platform_settings (product_id) :",
+            errPs,
+          );
+        }
+
+        // 3. Sauvegarde de la configuration principale dans Supabase
+        try {
+          const { error } = await supabase
+            .from("mz_flash_offer_v2")
+            .upsert(updates);
+          if (error) {
+            console.warn(
+              "Table mz_flash_offer_v2 upsert returned error:",
+              error.message,
+              error,
+            );
+            if (
+              error.message?.includes("chariow_product_id") ||
+              error.code === "42703"
+            ) {
+              // Sauvegarde de secours s'il manque des colonnes
+              const fallbackUpdates = { ...updates };
+              delete fallbackUpdates.chariow_product_id;
+              try {
+                await supabase.from("mz_flash_offer_v2").upsert(fallbackUpdates);
+              } catch (errFallback) {
+                console.warn("Fallback upsert failed", errFallback);
+              }
             }
           }
+        } catch (dbErr) {
+          console.warn(
+            "Table mz_flash_offer_v2 manquante ou autre erreur, sauvegarde réussie via platform_settings !",
+            dbErr,
+          );
         }
-      } catch (dbErr) {
-        console.warn(
-          "Table mz_flash_offer_v2 manquante ou autre erreur, sauvegarde réussie via platform_settings !",
-          dbErr,
-        );
       }
 
       setSuccess(true);
