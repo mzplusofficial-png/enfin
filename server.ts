@@ -297,8 +297,160 @@ async function startServer() {
     }
   });
 
-  // API Route to securely download / replicate any Google Drive file locally using the user's active client OAuth Access Token.
-  // This completely bypasses peer-to-peer / private permission limitations by generating a direct server-hosted public URL.
+  // Robust server-side replication helper for Google Drive files
+  // This downloads the file safely, saves it in public/uploads/ and returns the local static URL /uploads/gdrive_FILE_ID.ext
+  async function replicateGDriveFileOnServer(fileId: string, fileName?: string, accessToken?: string): Promise<string> {
+    const safeId = fileId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+    
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    // Check if we already have a matching file in public/uploads/
+    const existingFiles = fs.readdirSync(uploadDir);
+    const matchingFile = existingFiles.find(f => f.startsWith(`gdrive_${safeId}`));
+    if (matchingFile) {
+      console.log(`[GDrive Replication Code] Found existing replicated static file: ${matchingFile}`);
+      return `/uploads/${matchingFile}`;
+    }
+
+    console.log(`[GDrive Replication Code] Start downloading and replicating Google Drive file ${fileId} statically...`);
+    let buffer: Buffer | null = null;
+    let contentType = 'image/png';
+    let successFetched = false;
+
+    // 1. Authenticated Google Drive API Method
+    if (accessToken) {
+      try {
+        const downloadUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
+        const apiResponse = await fetch(downloadUrl, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        if (apiResponse.ok) {
+          const arr = await apiResponse.arrayBuffer();
+          buffer = Buffer.from(arr);
+          contentType = apiResponse.headers.get('content-type') || 'image/png';
+          successFetched = true;
+          console.log(`[GDrive Replication Code] Authenticated download successful (${buffer.length} bytes)`);
+        }
+      } catch (e: any) {
+        console.warn(`[GDrive Replication Code] Authenticated download failed:`, e.message);
+      }
+    }
+
+    // 2. Anonymous fallbacks if auth fails or not provided
+    if (!successFetched) {
+      // Looks like an image -> lh3 image endpoint
+      const looksLikeImage = fileName && (
+        fileName.toLowerCase().endsWith('.png') ||
+        fileName.toLowerCase().endsWith('.jpg') ||
+        fileName.toLowerCase().endsWith('.jpeg') ||
+        fileName.toLowerCase().endsWith('.gif') ||
+        fileName.toLowerCase().endsWith('.webp')
+      );
+
+      if (looksLikeImage || !fileName) {
+        try {
+          const lh3Url = `https://lh3.googleusercontent.com/d/${fileId}`;
+          const imgResponse = await fetch(lh3Url, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+          });
+          if (imgResponse.ok) {
+            const arr = await imgResponse.arrayBuffer();
+            buffer = Buffer.from(arr);
+            contentType = imgResponse.headers.get('content-type') || 'image/png';
+            if (!contentType.includes('text/html')) {
+              successFetched = true;
+              console.log(`[GDrive Replication Code] Anonymous lh3 download successful (${buffer.length} bytes)`);
+            }
+          }
+        } catch (e: any) {
+          console.warn(`[GDrive Replication Code] lh3 download failed:`, e.message);
+        }
+      }
+
+      // Generic direct docs download with confirmation parsing
+      if (!successFetched) {
+        try {
+          const tryDocDownload = async (hasConfirmed = false, confirmToken = ''): Promise<{ buffer: Buffer; contentType: string } | null> => {
+            let fetchUrl = `https://docs.google.com/uc?export=download&id=${fileId}`;
+            if (hasConfirmed && confirmToken) {
+              fetchUrl += `&confirm=${confirmToken}`;
+            }
+            const docResponse = await fetch(fetchUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*'
+              }
+            });
+
+            if (!docResponse.ok) {
+              throw new Error(`Google HTTP ${docResponse.status} ${docResponse.statusText}`);
+            }
+
+            const typeHeader = docResponse.headers.get('content-type') || '';
+            const arr = await docResponse.arrayBuffer();
+            const buf = Buffer.from(arr);
+
+            if (typeHeader.includes('text/html') && buf.length < 150 * 1024) {
+              const text = buf.toString('utf-8');
+              const tokenMatch = text.match(/confirm=([a-zA-Z0-9_-]+)/);
+              if (tokenMatch && tokenMatch[1] && !hasConfirmed) {
+                return await tryDocDownload(true, tokenMatch[1]);
+              }
+            }
+
+            return { buffer: buf, contentType: typeHeader };
+          };
+
+          const docResult = await tryDocDownload();
+          if (docResult && !docResult.contentType.includes('text/html')) {
+            buffer = docResult.buffer;
+            contentType = docResult.contentType;
+            successFetched = true;
+            console.log(`[GDrive Replication Code] Anonymous doc download bypass successful (${buffer.length} bytes)`);
+          }
+        } catch (e: any) {
+          console.warn(`[GDrive Replication Code] Anonymous doc download bypass failed:`, e.message);
+        }
+      }
+    }
+
+    if (!successFetched || !buffer) {
+      throw new Error(`Le fichier Google Drive ${fileId} n'a pas pu être téléchargé. Veuillez vous assurer que le fichier possède les permissions de partage public ('Tous les utilisateurs disposant du lien peuvent consulter').`);
+    }
+
+    let extension = '.png';
+    if (contentType.includes('image/jpeg') || contentType.includes('image/jpg')) {
+      extension = '.jpg';
+    } else if (contentType.includes('image/gif')) {
+      extension = '.gif';
+    } else if (contentType.includes('image/webp')) {
+      extension = '.webp';
+    } else if (contentType.includes('audio/mpeg') || contentType.includes('audio/mp3')) {
+      extension = '.mp3';
+    } else if (contentType.includes('audio/wav')) {
+      extension = '.wav';
+    } else if (contentType.includes('audio/ogg')) {
+      extension = '.ogg';
+    } else if (contentType.includes('application/pdf')) {
+      extension = '.pdf';
+    } else if (fileName) {
+      const dotIndex = fileName.lastIndexOf('.');
+      if (dotIndex !== -1) {
+        extension = fileName.substring(dotIndex);
+      }
+    }
+
+    const localFileName = `gdrive_${safeId}${extension}`;
+    const fullPath = path.join(uploadDir, localFileName);
+    fs.writeFileSync(fullPath, buffer);
+    console.log(`[GDrive Replication Code] Fichier répliqué avec succès : ${fullPath} (${buffer.length} octets)`);
+    return `/uploads/${localFileName}`;
+  }
+
+  // API Route to securely download / replicate any Google Drive file locally using the user's active client OAuth Access Token or robust public fallbacks.
   app.post('/api/gdrive/import', async (req, res) => {
     try {
       const { fileId, accessToken, fileName } = req.body;
@@ -307,75 +459,12 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Identifiant de fichier Drive manquant." });
       }
 
-      console.log(`[Google Drive Import] Demande de réplication du fichier ${fileId} reçue...`);
-
-      let downloadUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
-      const fetchHeaders: any = {};
-
-      if (accessToken) {
-        fetchHeaders['Authorization'] = `Bearer ${accessToken}`;
-      }
-
-      const response = await fetch(downloadUrl, {
-        headers: fetchHeaders
-      });
-
-      if (!response.ok) {
-        console.error(`[Google Drive Import] Erreur Google API : ${response.status} ${response.statusText}`);
-        return res.status(response.status).json({
-          success: false,
-          error: `Impossible d'accéder au fichier depuis Google Drive : ${response.statusText}`
-        });
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      // Determine extension based on Google's returned mimetype header or fall back
-      const contentType = response.headers.get('content-type') || 'image/png';
-      let extension = '.png';
-      if (contentType.includes('image/jpeg') || contentType.includes('image/jpg')) {
-        extension = '.jpg';
-      } else if (contentType.includes('image/gif')) {
-        extension = '.gif';
-      } else if (contentType.includes('image/webp')) {
-        extension = '.webp';
-      } else if (contentType.includes('audio/mpeg') || contentType.includes('audio/mp3')) {
-        extension = '.mp3';
-      } else if (contentType.includes('audio/wav')) {
-        extension = '.wav';
-      } else if (contentType.includes('audio/ogg')) {
-        extension = '.ogg';
-      } else if (contentType.includes('application/pdf')) {
-        extension = '.pdf';
-      } else if (fileName) {
-        const dotIndex = fileName.lastIndexOf('.');
-        if (dotIndex !== -1) {
-          extension = fileName.substring(dotIndex);
-        }
-      }
-
-      // Generate a clean safe filename
-      // Replace non-alphanumeric chars to make it clean
-      const safeId = fileId.replace(/[^a-zA-Z0-9_-]/g, '');
-      const localFileName = `gdrive_${safeId}${extension}`;
-      const relativePath = path.join('uploads', localFileName);
-      const fullPath = path.join(process.cwd(), 'public', relativePath);
-
-      const dir = path.dirname(fullPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      fs.writeFileSync(fullPath, buffer);
-      console.log(`[Google Drive Import] Fichier répliqué avec succès en local : ${fullPath} (${buffer.length} octets)`);
-
-      const publicUrl = `/${relativePath.replace(/\\/g, '/')}`;
+      console.log(`[Google Drive Import API] Demande de réplication du fichier ${fileId}...`);
+      const publicUrl = await replicateGDriveFileOnServer(fileId, fileName, accessToken);
+      
       return res.status(200).json({
         success: true,
-        publicUrl,
-        size: buffer.length,
-        contentType
+        publicUrl
       });
     } catch (err: any) {
       console.error('[Google Drive Import API] Exception critique:', err);
@@ -403,12 +492,25 @@ async function startServer() {
         return res.status(400).json({ error: "Paramètre URL manquant." });
       }
 
-      let targetUrl = audioUrl;
       const gDriveMatch = audioUrl.match(/\/d\/([a-zA-Z0-9_-]{15,120})/);
       const queryIdMatch = audioUrl.match(/[?&]id=([a-zA-Z0-9_-]{15,120})/);
-      const id = (gDriveMatch && gDriveMatch[1]) || (queryIdMatch && queryIdMatch[1]);
-      const isGDrive = audioUrl.includes('google.com') || audioUrl.includes('googleusercontent.com') || id;
+      const rawIdMatch = audioUrl.trim().match(/^[a-zA-Z0-9_-]{19,80}$/);
+      const fileId = (gDriveMatch && gDriveMatch[1]) || (queryIdMatch && queryIdMatch[1]) || (rawIdMatch && rawIdMatch[0]);
+      const isGDrive = audioUrl.includes('google.com') || audioUrl.includes('googleusercontent.com') || fileId;
 
+      if (isGDrive && fileId) {
+        try {
+          console.log(`[Proxy Audio] Audio de Google Drive détecté: ${audioUrl}. Réplication statique en cours...`);
+          const localStaticPath = await replicateGDriveFileOnServer(fileId, 'sound.mp3');
+          console.log(`[Proxy Audio] Réplication réussie. Redirection vers le fichier statique local : ${localStaticPath}`);
+          return res.redirect(localStaticPath);
+        } catch (replErr: any) {
+          console.warn(`[Proxy Audio] Échec de la réplication rapide, repli vers le stream proxy traditionnel:`, replErr.message);
+        }
+      }
+
+      let targetUrl = audioUrl;
+      const id = fileId;
       if (isGDrive && id) {
         targetUrl = `https://docs.google.com/uc?export=download&id=${id}`;
       }
@@ -497,10 +599,26 @@ async function startServer() {
         } catch (e) {}
       }
 
-      const updatedSounds = currentSounds.map(def => {
+      const updatedSounds = await Promise.all(currentSounds.map(async (def) => {
         const found = updates.find((upd: any) => upd.category === def.category);
-        return found ? { ...def, url: found.url } : def;
-      });
+        if (found) {
+          let soundUrl = found.url;
+          const gDriveMatch = soundUrl.match(/\/d\/([a-zA-Z0-9_-]{15,120})/);
+          const queryIdMatch = soundUrl.match(/[?&]id=([a-zA-Z0-9_-]{15,120})/);
+          const rawIdMatch = soundUrl.trim().match(/^[a-zA-Z0-9_-]{19,80}$/);
+          const fileId = (gDriveMatch && gDriveMatch[1]) || (queryIdMatch && queryIdMatch[1]) || (rawIdMatch && rawIdMatch[0]);
+          if (fileId) {
+            try {
+              console.log(`[Admin Sound Effects API] Réplication automatique du son Google Drive ${fileId}...`);
+              soundUrl = await replicateGDriveFileOnServer(fileId, 'sound.mp3');
+            } catch (err: any) {
+              console.error(`[Admin Sound Effects API] Échec de la réplication automatique pour ${fileId}:`, err.message);
+            }
+          }
+          return { ...def, url: soundUrl };
+        }
+        return def;
+      }));
 
       fs.writeFileSync(SOUNDS_FILE, JSON.stringify(updatedSounds, null, 2), 'utf-8');
       
@@ -597,6 +715,38 @@ async function startServer() {
     try {
       const { id, name, before_amount, after_amount, time_frame, before_image_url, after_image_url, description, award_type, milestone_title, is_active, sort_order, country_flag } = req.body;
       
+      let replicatedBeforeImg = before_image_url;
+      if (before_image_url) {
+        const gDriveMatch = before_image_url.match(/\/d\/([a-zA-Z0-9_-]{15,120})/);
+        const queryIdMatch = before_image_url.match(/[?&]id=([a-zA-Z0-9_-]{15,120})/);
+        const rawIdMatch = before_image_url.trim().match(/^[a-zA-Z0-9_-]{19,80}$/);
+        const fileId = (gDriveMatch && gDriveMatch[1]) || (queryIdMatch && queryIdMatch[1]) || (rawIdMatch && rawIdMatch[0]);
+        if (fileId) {
+          try {
+            console.log(`[Admin Premium Proofs] Replication du avant_image: ${fileId}...`);
+            replicatedBeforeImg = await replicateGDriveFileOnServer(fileId, 'before.png');
+          } catch (err: any) {
+            console.error(`[Admin Premium Proofs] Échec de la réplication de avant_image :`, err.message);
+          }
+        }
+      }
+
+      let replicatedAfterImg = after_image_url;
+      if (after_image_url) {
+        const gDriveMatch = after_image_url.match(/\/d\/([a-zA-Z0-9_-]{15,120})/);
+        const queryIdMatch = after_image_url.match(/[?&]id=([a-zA-Z0-9_-]{15,120})/);
+        const rawIdMatch = after_image_url.trim().match(/^[a-zA-Z0-9_-]{19,80}$/);
+        const fileId = (gDriveMatch && gDriveMatch[1]) || (queryIdMatch && queryIdMatch[1]) || (rawIdMatch && rawIdMatch[0]);
+        if (fileId) {
+          try {
+            console.log(`[Admin Premium Proofs] Replication du apres_image: ${fileId}...`);
+            replicatedAfterImg = await replicateGDriveFileOnServer(fileId, 'after.png');
+          } catch (err: any) {
+            console.error(`[Admin Premium Proofs] Échec de la réplication de apres_image :`, err.message);
+          }
+        }
+      }
+
       let proofs: any[] = DEFAULT_PREMIUM_PROOFS;
       if (fs.existsSync(PROOFS_FILE)) {
         try {
@@ -615,8 +765,8 @@ async function startServer() {
             before_amount: before_amount !== undefined ? before_amount : proofs[index].before_amount,
             after_amount: after_amount !== undefined ? after_amount : proofs[index].after_amount,
             time_frame: time_frame !== undefined ? time_frame : proofs[index].time_frame,
-            before_image_url: before_image_url !== undefined ? before_image_url : proofs[index].before_image_url,
-            after_image_url: after_image_url !== undefined ? after_image_url : proofs[index].after_image_url,
+            before_image_url: before_image_url !== undefined ? replicatedBeforeImg : proofs[index].before_image_url,
+            after_image_url: after_image_url !== undefined ? replicatedAfterImg : proofs[index].after_image_url,
             description: description !== undefined ? description : proofs[index].description,
             award_type: award_type !== undefined ? award_type : proofs[index].award_type,
             milestone_title: milestone_title !== undefined ? milestone_title : proofs[index].milestone_title,
@@ -628,7 +778,7 @@ async function startServer() {
           // If not found but ID is passed (custom edit)
           proofs.push({
             id,
-            name, before_amount, after_amount, time_frame, before_image_url, after_image_url, description, award_type, milestone_title, is_active: is_active ?? true, sort_order: sort_order ?? 0, country_flag
+            name, before_amount, after_amount, time_frame, before_image_url: replicatedBeforeImg, after_image_url: replicatedAfterImg, description, award_type, milestone_title, is_active: is_active ?? true, sort_order: sort_order ?? 0, country_flag
           });
         }
       } else {
@@ -640,8 +790,8 @@ async function startServer() {
           before_amount: before_amount || '',
           after_amount: after_amount || '',
           time_frame: time_frame || '',
-          before_image_url: before_image_url || '',
-          after_image_url: after_image_url || '',
+          before_image_url: replicatedBeforeImg || '',
+          after_image_url: replicatedAfterImg || '',
           description: description || '',
           award_type: award_type || 'first_sale',
           milestone_title: milestone_title || '',
