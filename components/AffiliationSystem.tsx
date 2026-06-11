@@ -168,44 +168,131 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
     }
   }, [showProductForm, isAdminView]);
 
-  const fetchData = useCallback(async (retryCount = 0) => {
+  const [commissionsCacheInfo, setCommissionsCacheInfo] = useState<{ loadedAt: number; fromCache: boolean; expiresAt: number } | null>(null);
+  const [productsCacheInfo, setProductsCacheInfo] = useState<{ fromCache: boolean } | null>(null);
+  const [serverSummary, setServerSummary] = useState<any>(null);
+  const [lastNotificationTime, setLastNotificationTime] = useState<string | null>(null);
+
+  const fetchData = useCallback(async (retryCount = 0, forceForce = false) => {
     try {
       setError(null);
       if (retryCount === 0) setLoading(true);
 
-      // Optimized columns selection to reduce initial load size
-      const { data: prods, error: prodsError } = await supabase
-        .from('products')
-        .select('id, name, description, price, commission_amount, image_url, final_link, chariow_product_id, theme');
-      
-      if (prodsError) throw prodsError;
-      
-      setProducts(prods || []);
+      // --- 1. GET PRODUCTS (ONLY ONCE PER SESSION unless forceForce is true) ---
+      let prods = null;
+      let loadedProdsFromCache = false;
+      try {
+        if (!forceForce) {
+          const cachedProds = sessionStorage.getItem("mz_session_products");
+          if (cachedProds) {
+            prods = JSON.parse(cachedProds);
+            loadedProdsFromCache = true;
+            console.log("[Cache System] Products retrieved once-per-session from Storage.");
+          }
+        }
+      } catch (e) {
+        console.warn("Error reading once-per-session products from storage", e);
+      }
+
+      if (!prods || prods.length === 0) {
+        const { data, error: prodsError } = await supabase
+          .from('products')
+          .select('id, name, description, price, commission_amount, image_url, final_link, chariow_product_id, theme');
+        
+        if (prodsError) throw prodsError;
+        prods = data || [];
+        try {
+          sessionStorage.setItem("mz_session_products", JSON.stringify(prods));
+          console.log("[Cache System] Products loaded from DB and saved into Session storage.");
+        } catch (e) {
+          console.warn("Error saving products once-per-session in storage", e);
+        }
+      }
+
+      setProducts(prods);
+      setProductsCacheInfo({ fromCache: loadedProdsFromCache });
 
       if (profile?.id && !(isAdminView && showCatalog)) {
         try {
-          // Isolate sub-queries in secondary try-catch block to prevent breaking the catalog display if these fail
-          const [commsRes, statsRes] = await Promise.all([
-            supabase.from('commissions')
+          // --- 2. GET COMMISSIONS (3-MINUTE PERSISTED CACHE unless forceForce is true) ---
+          let rawComms = null;
+          let loadedCommsFromCache = false;
+          let expiresAt = Date.now() + 3 * 60 * 1000;
+          let loadedTime = Date.now();
+
+          try {
+            if (!forceForce) {
+              const cachedCommsRaw = sessionStorage.getItem("mz_commissions_cache");
+              if (cachedCommsRaw) {
+                const parsed = JSON.parse(cachedCommsRaw);
+                const now = Date.now();
+                if (parsed.expiry && now < parsed.expiry && parsed.user_id === profile.id) {
+                  rawComms = parsed.data;
+                  loadedCommsFromCache = true;
+                  expiresAt = parsed.expiry;
+                  loadedTime = parsed.loadedAt || (parsed.expiry - 3 * 60 * 1000);
+                  console.log("[Cache System] Commissions loaded from 3-minute Storage Cache.");
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("Error reading 3-minute commissions cache", e);
+          }
+
+          if (!rawComms) {
+            const commsRes = await supabase.from('commissions')
               .select('id, amount, status, created_at, product_id, user_id, products(id, name, commission_amount, price, image_url)')
               .eq('user_id', profile.id)
               .order('created_at', { ascending: false })
-              .limit(visibleCount + 1),
-            supabase.from('product_stats')
-              .select('product_id, clicks')
-              .eq('user_id', profile.id)
-          ]);
-          
-          if (!commsRes.error) {
-            const rawComms = (commsRes.data || []).map((c: any) => ({
+              .limit(visibleCount + 1);
+
+            if (commsRes.error) throw commsRes.error;
+
+            rawComms = (commsRes.data || []).map((c: any) => ({
               ...c,
               products: Array.isArray(c.products) ? c.products[0] : (c.products || null)
             }));
-            setHasMoreComms(rawComms.length > visibleCount);
-            setCommissions(rawComms.slice(0, visibleCount) as any[]);
-          } else {
-            console.warn("Secondary commissions query failure bypassed:", commsRes.error);
+
+            // Store in sessionStorage cache for 3 minutes
+            try {
+              sessionStorage.setItem("mz_commissions_cache", JSON.stringify({
+                user_id: profile.id,
+                expiry: Date.now() + 3 * 60 * 1000,
+                loadedAt: loadedTime,
+                data: rawComms
+              }));
+              console.log("[Cache System] Commissions cached for 3 minutes.");
+            } catch (e) {
+              console.warn("Error saving 3-minute commissions cache", e);
+            }
           }
+
+          setHasMoreComms(rawComms.length > visibleCount);
+          setCommissions(rawComms.slice(0, visibleCount) as any[]);
+          setCommissionsCacheInfo({
+            loadedAt: loadedTime,
+            fromCache: loadedCommsFromCache,
+            expiresAt
+          });
+
+          // --- 3. GET SERVER-SIDE AGGREGATED SUMMARY (Efficient single-fetch endpoint) ---
+          try {
+            const summaryRes = await fetch(`/api/commissions/summary?user_id=${profile.id}${forceForce ? '&cb=' + Date.now() : ''}`);
+            if (summaryRes.ok) {
+              const json = await summaryRes.json();
+              if (json && json.success) {
+                setServerSummary(json.summary);
+                console.log("[Cache System] Server-side Aggregated Commissions Summary successfully loaded:", json.summary);
+              }
+            }
+          } catch (sumErr) {
+            console.warn("[Cache System] Server-side summary fetch failed, using local aggregate fallback:", sumErr);
+          }
+
+          // Fetch baseline product clicks
+          const statsRes = await supabase.from('product_stats')
+            .select('product_id, clicks')
+            .eq('user_id', profile.id);
 
           if (!statsRes.error) {
             setProductStats(statsRes.data || []);
@@ -221,7 +308,7 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
       if (retryCount < 3 && (e.message?.includes('fetch') || e.name === 'TypeError')) {
         const delay = 1000 * (retryCount + 1);
         console.log(`Retrying affiliation fetch in ${delay}ms...`);
-        setTimeout(() => fetchData(retryCount + 1), delay);
+        setTimeout(() => fetchData(retryCount + 1, forceForce), delay);
         return;
       }
       setError("Erreur de connexion. Veuillez vérifier votre réseau.");
@@ -231,8 +318,41 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
     }
   }, [profile?.id, visibleCount]);
 
+  // Real-time Database Trigger Webhooks to invalidate caches if commission records change
   useEffect(() => {
-    fetchData();
+    if (!profile?.id) return;
+
+    const channel = supabase
+      .channel(`live-commissions-trigger-${profile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'commissions',
+          filter: `user_id=eq.${profile.id}`
+        },
+        (payload) => {
+          console.log('[Realtime Notification] Commission record modified. Invalidating caches and triggering real-time sync...', payload);
+          setLastNotificationTime(new Date().toLocaleTimeString('fr-FR'));
+
+          // Invalidate cache in Storage for immediate refresh
+          sessionStorage.removeItem("mz_commissions_cache");
+          sessionStorage.removeItem("mz_mystore_commissions_cache");
+
+          // Run sync in force mode!
+          fetchData(0, true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.id, fetchData]);
+
+  useEffect(() => {
+    fetchData(0, false);
   }, [fetchData, lastUpdateSignal]);
 
   const handleUpdateStatus = async (id: string, status: 'approved' | 'rejected') => {
@@ -240,7 +360,10 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
     try {
       const { error } = await supabase.from('commissions').update({ status }).eq('id', id);
       if (error) throw error;
-      fetchData();
+      // Invalidate caches instantly
+      sessionStorage.removeItem("mz_commissions_cache");
+      sessionStorage.removeItem("mz_mystore_commissions_cache");
+      fetchData(0, true);
     } catch (e: any) { alert("Erreur validation : " + e.message); } finally { setProcessingId(null); }
   };
 
@@ -289,7 +412,9 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
       setShowProductForm(false);
       setEditingProduct(null);
       setProductFormData({ name: '', description: '', price: 0, commission_amount: 0, image_url: '', final_link: '', chariow_product_id: '', theme: '' });
-      fetchData();
+      // Invalidate caches instantly
+      sessionStorage.removeItem("mz_session_products");
+      fetchData(0, true);
     } catch (err: any) { alert(err.message); } finally { setIsSavingProduct(false); }
   };
 
@@ -304,7 +429,9 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
       // 2. Delete the product
       const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
-      fetchData();
+      // Invalidate caches instantly
+      sessionStorage.removeItem("mz_session_products");
+      fetchData(0, true);
     } catch (err: any) { alert("Erreur: " + err.message); }
   };
 
@@ -1028,14 +1155,58 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
     );
   }
 
+  const totalVolumeCalculated = serverSummary 
+    ? serverSummary.totalVolume 
+    : commissions.filter(c => c.status === 'approved').reduce((acc, c) => acc + c.amount, 0);
+
+  const totalSalesCalculated = serverSummary
+    ? serverSummary.totalSales
+    : commissions.filter(c => c.status === 'approved' || c.status === 'finalized').length;
+
   return (
-    <div className="max-w-4xl mx-auto space-y-20 animate-fade-in pb-32 px-4">
+    <div className="max-w-4xl mx-auto space-y-16 animate-fade-in pb-32 px-4">
       
+      {/* Optimized Cache Info & Synchronization Banner */}
+      {(commissionsCacheInfo || productsCacheInfo || lastNotificationTime) && (
+        <div className="bg-[#0b0c0d] border border-yellow-500/10 hover:border-yellow-500/20 p-5 rounded-[2rem] space-y-4 transition-all">
+          <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-yellow-500 text-[10px] font-black uppercase tracking-wider">
+                <Sparkles size={12} className="animate-pulse" />
+                <span>Optimisation Cache & Performances MZ+</span>
+              </div>
+              <p className="text-[10px] text-neutral-400 font-medium">
+                {productsCacheInfo?.fromCache && "📦 Catalogue : Chargé une seule fois par session (Cache de Session). "}
+                {commissionsCacheInfo?.fromCache && `💰 Commissions : Lecture via cache de 3 minutes pour économiser la bande passante.`}
+                {!commissionsCacheInfo?.fromCache && commissionsCacheInfo && `💰 Commissions : Données chargées en direct (Cache réinitialisé pendant 3 minutes).`}
+              </p>
+              {lastNotificationTime && (
+                <p className="text-[9px] text-emerald-400 font-bold flex items-center gap-1.5 pt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                  Dernier webhook en direct reçu à {lastNotificationTime} (Synchro automatique déclenchée)
+                </p>
+              )}
+            </div>
+            
+            <button
+              onClick={() => fetchData(0, true)}
+              className="group flex items-center gap-2 px-4 py-2 bg-yellow-500/10 hover:bg-yellow-500 hover:text-black border border-yellow-500/20 rounded-xl text-yellow-500 font-black uppercase text-[9px] tracking-wider transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+            >
+              <RefreshCw size={11} className="group-hover:rotate-180 transition-transform duration-500" />
+              Forcer Réactualisation
+            </button>
+          </div>
+          <div className="text-[9px] text-neutral-500 font-bold leading-normal border-t border-white/5 pt-2.5">
+            ℹ️ Note client : Les données de commission et de produits se mettent à jour automatiquement sur modification réelle en temps réel (via Realtime Webhooks), ou si vous forcez la réactualisation manuelle ci-dessus.
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="p-6 bg-red-500/10 border border-red-500/20 rounded-[2rem] text-center space-y-4">
           <p className="text-xs font-black uppercase text-red-500">{error}</p>
           <button 
-            onClick={() => fetchData()}
+            onClick={() => fetchData(0, true)}
             className="px-6 py-2 bg-red-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-400 transition-all"
           >
             Réessayer
@@ -1044,7 +1215,7 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
       )}
 
       {/* 1. MES GAINS (Focus Central) */}
-      <section className="text-center pt-12 space-y-6 overflow-hidden">
+      <section className="text-center pt-8 space-y-6 overflow-hidden">
         <div className="inline-flex items-center gap-3 px-4 py-1.5 bg-yellow-600/5 border border-yellow-600/10 rounded-full">
           <div className="w-1 h-1 rounded-full bg-yellow-600 animate-pulse"></div>
           <span className="text-[8px] font-black uppercase tracking-[0.4em] text-neutral-500">Trésorerie Affiliation</span>
@@ -1052,7 +1223,7 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
         
         <div id="affiliation-balance-zone" className="space-y-4 py-4">
           <CurrencyDisplay 
-            amount={commissions.filter(c => c.status === 'approved').reduce((acc, c) => acc + c.amount, 0)} 
+            amount={totalVolumeCalculated} 
             className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-white font-mono tracking-tighter leading-tight break-words"
             secondaryClassName="text-lg md:text-xl text-yellow-600 font-black uppercase mt-2"
             vertical={true}
@@ -1069,13 +1240,13 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
             <p className="text-[8px] text-neutral-600 font-black uppercase tracking-widest">Clics</p>
           </div>
           <div className="text-center space-y-1">
-            <p className="text-2xl font-black text-white font-mono">{commissions.filter(c => c.status === 'approved' || c.status === 'finalized').length}</p>
+            <p className="text-2xl font-black text-white font-mono">{totalSalesCalculated}</p>
             <p className="text-[8px] text-neutral-600 font-black uppercase tracking-widest">Ventes</p>
           </div>
           <div className="text-center space-y-1">
             <p className="text-2xl font-black text-white font-mono">
               {(productStats.reduce((acc, s) => acc + (Number(s.clicks) || 0), 0) > 0 
-                ? ((commissions.filter(c => c.status === 'approved' || c.status === 'finalized').length / productStats.reduce((acc, s) => acc + (Number(s.clicks) || 0), 0)) * 100).toFixed(1) 
+                ? ((totalSalesCalculated / productStats.reduce((acc, s) => acc + (Number(s.clicks) || 0), 0)) * 100).toFixed(1) 
                 : "0")}%
             </p>
             <p className="text-[8px] text-neutral-600 font-black uppercase tracking-widest">Conv.</p>

@@ -297,6 +297,92 @@ async function startServer() {
     }
   });
 
+  // API Route to securely download / replicate any Google Drive file locally using the user's active client OAuth Access Token.
+  // This completely bypasses peer-to-peer / private permission limitations by generating a direct server-hosted public URL.
+  app.post('/api/gdrive/import', async (req, res) => {
+    try {
+      const { fileId, accessToken, fileName } = req.body;
+
+      if (!fileId) {
+        return res.status(400).json({ success: false, error: "Identifiant de fichier Drive manquant." });
+      }
+
+      console.log(`[Google Drive Import] Demande de réplication du fichier ${fileId} reçue...`);
+
+      let downloadUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
+      const fetchHeaders: any = {};
+
+      if (accessToken) {
+        fetchHeaders['Authorization'] = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(downloadUrl, {
+        headers: fetchHeaders
+      });
+
+      if (!response.ok) {
+        console.error(`[Google Drive Import] Erreur Google API : ${response.status} ${response.statusText}`);
+        return res.status(response.status).json({
+          success: false,
+          error: `Impossible d'accéder au fichier depuis Google Drive : ${response.statusText}`
+        });
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Determine extension based on Google's returned mimetype header or fall back
+      const contentType = response.headers.get('content-type') || 'image/png';
+      let extension = '.png';
+      if (contentType.includes('image/jpeg') || contentType.includes('image/jpg')) {
+        extension = '.jpg';
+      } else if (contentType.includes('image/gif')) {
+        extension = '.gif';
+      } else if (contentType.includes('image/webp')) {
+        extension = '.webp';
+      } else if (contentType.includes('audio/mpeg') || contentType.includes('audio/mp3')) {
+        extension = '.mp3';
+      } else if (contentType.includes('audio/wav')) {
+        extension = '.wav';
+      } else if (contentType.includes('audio/ogg')) {
+        extension = '.ogg';
+      } else if (contentType.includes('application/pdf')) {
+        extension = '.pdf';
+      } else if (fileName) {
+        const dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex !== -1) {
+          extension = fileName.substring(dotIndex);
+        }
+      }
+
+      // Generate a clean safe filename
+      // Replace non-alphanumeric chars to make it clean
+      const safeId = fileId.replace(/[^a-zA-Z0-9_-]/g, '');
+      const localFileName = `gdrive_${safeId}${extension}`;
+      const relativePath = path.join('uploads', localFileName);
+      const fullPath = path.join(process.cwd(), 'public', relativePath);
+
+      const dir = path.dirname(fullPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      fs.writeFileSync(fullPath, buffer);
+      console.log(`[Google Drive Import] Fichier répliqué avec succès en local : ${fullPath} (${buffer.length} octets)`);
+
+      const publicUrl = `/${relativePath.replace(/\\/g, '/')}`;
+      return res.status(200).json({
+        success: true,
+        publicUrl,
+        size: buffer.length,
+        contentType
+      });
+    } catch (err: any) {
+      console.error('[Google Drive Import API] Exception critique:', err);
+      return res.status(500).json({ success: false, error: err.message || 'Erreur interne de réplication' });
+    }
+  });
+
   // High-performance cache for sound effects configuration
   let cachedSoundEffects: any = null;
   let cachedSoundEffectsTimestamp = 0;
@@ -2231,6 +2317,86 @@ async function startServer() {
       return res.json({ success: true, data: data || [] });
     } catch (err: any) {
       console.error("[Server] Error fetching product stats:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Optimized server-side aggregated queries for commissions to minimize data transfer
+  app.get('/api/commissions/summary', async (req, res) => {
+    try {
+      const { user_id, period } = req.query;
+      if (!user_id || typeof user_id !== 'string') {
+        return res.status(400).json({ success: false, error: 'Missing or invalid user_id parameter' });
+      }
+
+      const adminKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+      const supabaseAdmin = createClient(SUPABASE_URL, adminKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+
+      // Query only status, amount, and created_at to preserve bandwidth and accelerate DB responses
+      let query = supabaseAdmin
+        .from('commissions')
+        .select('status, amount, created_at')
+        .eq('user_id', user_id);
+
+      if (period === '7d') {
+        const dateLimit = new Date();
+        dateLimit.setDate(dateLimit.getDate() - 7);
+        query = query.gte('created_at', dateLimit.toISOString());
+      } else if (period === '30d') {
+        const dateLimit = new Date();
+        dateLimit.setDate(dateLimit.getDate() - 30);
+        query = query.gte('created_at', dateLimit.toISOString());
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        throw error;
+      }
+
+      let totalVolume = 0;
+      let totalSales = 0;
+      let pendingCount = 0;
+      let approvedCount = 0;
+      let rejectedCount = 0;
+      let finalizedCount = 0;
+
+      if (data && data.length > 0) {
+        data.forEach((c: any) => {
+          const amt = Number(c.amount) || 0;
+          if (c.status === 'approved') {
+            totalVolume += amt;
+            approvedCount++;
+          } else if (c.status === 'pending') {
+            pendingCount++;
+          } else if (c.status === 'rejected') {
+            rejectedCount++;
+          } else if (c.status === 'finalized') {
+            finalizedCount++;
+          }
+        });
+        totalSales = approvedCount + finalizedCount;
+      }
+
+      const totalCount = data ? data.length : 0;
+      const validationRate = totalCount > 0 ? Math.round((approvedCount / totalCount) * 100) : 0;
+
+      return res.json({
+        success: true,
+        summary: {
+          totalVolume,
+          totalSales,
+          approvedCount,
+          pendingCount,
+          rejectedCount,
+          finalizedCount,
+          totalCount,
+          validationRate
+        }
+      });
+    } catch (err: any) {
+      console.error("[Server] Error in commissions summary API:", err.message);
       return res.status(500).json({ success: false, error: err.message });
     }
   });

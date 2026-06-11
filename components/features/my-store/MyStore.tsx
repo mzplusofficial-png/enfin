@@ -436,10 +436,10 @@ export const MyStore: React.FC<MyStoreProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    fetchData(false);
   }, [profile?.id, activeSegment]);
 
-  const fetchData = async () => {
+  const fetchData = async (forceForce = false) => {
     try {
       if (!profile?.id) return;
 
@@ -448,20 +448,13 @@ export const MyStore: React.FC<MyStoreProps> = ({
         .then(res => ({ data: res.success ? res.data : [] }))
         .catch(() => ({ data: [] }));
 
-      // 1. Fetch store user products, stats and commissions
-      const [storeRes, statsRes, commsRes] = await Promise.all([
+      // 1. Fetch store user products and stats with efficient caching
+      const [storeRes, statsRes] = await Promise.all([
         supabase
           .from("mz_user_store")
           .select("product_id")
           .eq("user_id", profile.id),
         statsFetch,
-        supabase
-          .from("commissions")
-          .select("id, amount, status, created_at, product_id, user_id")
-          .eq("user_id", profile.id)
-          .in("status", ["approved", "pending", "rejected", "finalized"])
-          .order("created_at", { ascending: false })
-          .limit(150),
       ]);
 
       const activeProductIds = storeRes.data
@@ -470,28 +463,86 @@ export const MyStore: React.FC<MyStoreProps> = ({
 
       setStoreProductIds(activeProductIds);
 
-      // 2. Optimized Products Fetch: Only fetch selected products unless we are on the import catalog tab
-      let productsQuery = supabase
-        .from("products")
-        .select("id, name, description, price, commission_amount, image_url, final_link, chariow_product_id, theme");
+      // 1.5 Fetch commissions (Use 3-minute Storage Cache unless forceForce is true)
+      let listComms = null;
+      try {
+        if (!forceForce) {
+          const cachedCommsRaw = sessionStorage.getItem("mz_mystore_commissions_cache");
+          if (cachedCommsRaw) {
+            const parsed = JSON.parse(cachedCommsRaw);
+            if (parsed.expiry && Date.now() < parsed.expiry && parsed.user_id === profile.id) {
+              listComms = parsed.data;
+              console.log("[Cache MyStore] Commissions loaded from 3-minute client cache.");
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to read commissions cache in MyStore", e);
+      }
 
-      if (activeSegment !== "import_catalog") {
-        if (activeProductIds.length > 0) {
-          productsQuery = productsQuery.in("id", activeProductIds);
-        } else {
-          // Empty boutique and not in catalog tab - no products need to be fetched!
-          setProducts([]);
-          if (statsRes.data) setProductStats(statsRes.data as ProductStat[]);
-          if (commsRes.data) setCommissions(commsRes.data as Commission[]);
-          return;
+      if (!listComms) {
+        const commsRes = await supabase
+          .from("commissions")
+          .select("id, amount, status, created_at, product_id, user_id")
+          .eq("user_id", profile.id)
+          .in("status", ["approved", "pending", "rejected", "finalized"])
+          .order("created_at", { ascending: false })
+          .limit(150);
+        
+        listComms = commsRes.data || [];
+        try {
+          sessionStorage.setItem("mz_mystore_commissions_cache", JSON.stringify({
+            user_id: profile.id,
+            expiry: Date.now() + 3 * 60 * 1000,
+            data: listComms
+          }));
+          console.log("[Cache MyStore] Commissions saved to 3-minute storage cache.");
+        } catch (e) {
+          console.warn("Failed to save commissions cache in MyStore", e);
+        }
+      }
+      setCommissions(listComms as Commission[]);
+
+      // 2. Fetch products (Use session cache loaded ONCE per session unless forceForce is true)
+      let listProds = null;
+      try {
+        if (!forceForce) {
+          const cachedProds = sessionStorage.getItem("mz_session_products");
+          if (cachedProds) {
+            listProds = JSON.parse(cachedProds);
+            console.log("[Cache MyStore] Products loaded from once-per-session storage cache.");
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to read session products cache in MyStore", e);
+      }
+
+      if (!listProds || listProds.length === 0) {
+        const productsQuery = await supabase
+          .from("products")
+          .select("id, name, description, price, commission_amount, image_url, final_link, chariow_product_id, theme");
+        
+        listProds = productsQuery.data || [];
+        try {
+          sessionStorage.setItem("mz_session_products", JSON.stringify(listProds));
+          console.log("[Cache MyStore] Products loaded from DB and cached once-per-session.");
+        } catch (e) {
+          console.warn("Failed to save session products cache in MyStore", e);
         }
       }
 
-      const { data: prods } = await productsQuery;
-      setProducts(prods || []);
+      // Filter products based on active segment and store associations
+      let filteredProds = listProds;
+      if (activeSegment !== "import_catalog") {
+        if (activeProductIds.length > 0) {
+          filteredProds = listProds.filter((p: any) => activeProductIds.includes(p.id));
+        } else {
+          filteredProds = [];
+        }
+      }
 
+      setProducts(filteredProds as Product[]);
       if (statsRes.data) setProductStats(statsRes.data as ProductStat[]);
-      if (commsRes.data) setCommissions(commsRes.data as Commission[]);
     } catch (err) {
       console.warn("Store sync failed, using fallback", err);
     }
@@ -499,7 +550,10 @@ export const MyStore: React.FC<MyStoreProps> = ({
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    await fetchData();
+    // Force clear local cached values for fresh sync
+    sessionStorage.removeItem("mz_mystore_commissions_cache");
+    sessionStorage.removeItem("mz_commissions_cache");
+    await fetchData(true);
     setTimeout(() => {
       setIsRefreshing(false);
     }, 600);

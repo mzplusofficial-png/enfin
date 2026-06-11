@@ -37,6 +37,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [importingFileId, setImportingFileId] = useState<string | null>(null);
 
   // Initialize Auth state
   useEffect(() => {
@@ -172,14 +173,55 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleSelect = (file: GoogleDriveFile) => {
-    if (onSelectFile) {
+  const handleSelect = async (file: GoogleDriveFile) => {
+    if (!onSelectFile) return;
+    if (importingFileId) return;
+
+    setImportingFileId(file.id);
+    setErrorMsg(null);
+
+    try {
+      console.log(`[GoogleDriveExplorer] Requesting server-side file replication: ${file.name} (${file.id})`);
+      const response = await fetch('/api/gdrive/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          fileId: file.id,
+          accessToken: token,
+          fileName: file.name
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur réseau (${response.statusText})`);
+      }
+
+      const resJson = await response.json();
+      if (!resJson.success) {
+        throw new Error(resJson.error || "Échec de réplication");
+      }
+
+      console.log(`[GoogleDriveExplorer] File replicated perfectly! Local URL: ${resJson.publicUrl}`);
+      onSelectFile({
+        id: file.id,
+        directView: resJson.publicUrl,
+        directDownload: resJson.publicUrl,
+        name: file.name
+      });
+    } catch (err: any) {
+      console.warn("[GoogleDriveExplorer] Server replication failed (utilizing standard direct URL fallback):", err);
+      setErrorMsg(`La réplication sécurisée vers le serveur a échoué. Utilisation des liens Google Drive en cours... (Erreur: ${err.message})`);
+      
       onSelectFile({
         id: file.id,
         directView: `https://lh3.googleusercontent.com/d/${file.id}`,
         directDownload: `https://docs.google.com/uc?export=download&id=${file.id}`,
         name: file.name
       });
+    } finally {
+      setImportingFileId(null);
     }
   };
 
@@ -348,13 +390,20 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
               {files.map(file => {
                 const isImage = file.mimeType.includes('image/');
                 const thumb = getThumbnailSrc(file);
+                const isImporting = importingFileId === file.id;
                 
                 return (
                   <div 
                     key={file.id} 
-                    onClick={() => handleSelect(file)}
-                    className="group bg-[#111111]/90 hover:bg-[#161616] border border-white/5 hover:border-amber-500/20 p-2.5 rounded-xl transition-all cursor-pointer flex flex-col justify-between text-left relative overflow-hidden"
+                    onClick={() => !isImporting && handleSelect(file)}
+                    className={`group bg-[#111111]/90 hover:bg-[#161616] border ${isImporting ? 'border-amber-500/40 opacity-70 cursor-not-allowed' : 'border-white/5 hover:border-amber-500/20'} p-2.5 rounded-xl transition-all cursor-pointer flex flex-col justify-between text-left relative overflow-hidden`}
                   >
+                    {isImporting && (
+                      <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-2 text-center">
+                        <RefreshCw size={18} className="text-amber-500 animate-spin mb-1.5" />
+                        <p className="text-[8px] text-amber-500 font-extrabold uppercase tracking-wider animate-pulse">Réplication...</p>
+                      </div>
+                    )}
                     {/* Thumbnail preview area */}
                     <div className="aspect-[4/3] w-full bg-black/60 rounded-lg flex items-center justify-center overflow-hidden mb-2 relative">
                       {thumb ? (
