@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ShoppingBag, Star, X, Search, ChevronRight, Check } from 'lucide-react';
 import { CurrencyDisplay } from '../../ui/CurrencyDisplay';
 import { Product } from '../../../types';
+import { getGDriveThumbnailUrl } from '../../../lib/googleDrive';
 
 interface PublicStorefrontProps {
   products: Product[];
@@ -148,9 +149,10 @@ export function PublicStorefront({ products, onClose, storeName = "Ma Boutique O
                     }}
                   >
                     <img 
-                      src={product.image_url} 
+                      src={getGDriveThumbnailUrl(product.image_url)} 
                       alt={product.name} 
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                      referrerPolicy="no-referrer"
                     />
                     <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider text-green-600 shadow-md flex items-center gap-1.5">
                        <Star size={12} className="fill-green-600" />
@@ -216,9 +218,10 @@ export function PublicStorefront({ products, onClose, storeName = "Ma Boutique O
                      <X size={20} />
                   </button>
                   <img 
-                     src={selectedProduct.image_url} 
+                     src={getGDriveThumbnailUrl(selectedProduct.image_url)} 
                      alt={selectedProduct.name}
                      className="w-full h-full object-cover min-h-[300px]"
+                     referrerPolicy="no-referrer"
                   />
                </div>
                <div className="md:w-1/2 p-8 sm:p-10 flex flex-col overflow-y-auto">

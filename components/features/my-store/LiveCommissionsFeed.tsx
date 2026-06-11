@@ -180,7 +180,7 @@ export const LiveCommissionsFeed: React.FC<{ products: Product[] }> = ({ product
                    className="flex items-center gap-3 bg-white/[0.02] p-3 rounded-[18px] border border-white/[0.04]"
                 >
                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-black overflow-hidden border border-white/5 shrink-0 shadow-lg">
-                      <img src={getGDriveThumbnailUrl(sale.imageUrl)} alt={sale.productName} className="w-full h-full object-cover opacity-90" />
+                      <img src={getGDriveThumbnailUrl(sale.imageUrl)} alt={sale.productName} className="w-full h-full object-cover opacity-90" referrerPolicy="no-referrer" />
                    </div>
                    <div className="flex-1 min-w-0">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3">

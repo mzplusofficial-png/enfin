@@ -405,7 +405,7 @@ export const PastRewardsView: React.FC<{ onClose: () => void }> = ({ onClose }) 
                             <div className="flex items-center gap-2">
                                {reward.payment_methods?.logo_url || (reward.payment_methods?.name && appImages[reward.payment_methods.name]) ? (
                                  <div className="h-6 bg-white border border-slate-200 rounded px-1.5 py-0.5 flex items-center justify-center shadow-sm">
-                                    <img src={getGDriveThumbnailUrl(reward.payment_methods?.logo_url || appImages[reward.payment_methods.name])} alt={reward.payment_methods?.name} className="h-4 w-auto object-contain max-w-[40px]" />
+                                    <img src={getGDriveThumbnailUrl(reward.payment_methods?.logo_url || appImages[reward.payment_methods.name])} alt={reward.payment_methods?.name} className="h-4 w-auto object-contain max-w-[40px]" referrerPolicy="no-referrer" />
                                  </div>
                                ) : (
                                   <div className="h-6 w-8 bg-slate-200 rounded flex items-center justify-center text-[8px] text-slate-500 uppercase font-black" >{reward.payment_methods?.name?.substring(0, 2) || '-'}</div>

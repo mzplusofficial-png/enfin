@@ -167,7 +167,7 @@ export const AdminImages: React.FC = () => {
                    <div className="flex items-start justify-between mb-3">
                      <div className="w-16 h-12 bg-white rounded-lg flex items-center justify-center overflow-hidden p-1 shadow-inner relative">
                        {method.logo_url ? (
-                         <img src={getGDriveThumbnailUrl(method.logo_url)} alt={method.name} className="w-full h-full object-contain pointer-events-none" />
+                         <img src={getGDriveThumbnailUrl(method.logo_url)} alt={method.name} className="w-full h-full object-contain pointer-events-none" referrerPolicy="no-referrer" />
                        ) : (
                          <ImageIcon className="text-neutral-400" size={18} />
                        )}

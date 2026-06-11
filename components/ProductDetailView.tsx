@@ -66,7 +66,7 @@ const ShareModal = ({ isOpen, onClose, product, link }: { isOpen: boolean, onClo
 
         <div className="space-y-6">
            <div className="flex items-center gap-4">
-              <img src={getGDriveThumbnailUrl(product.image_url)} className="w-16 h-16 rounded-2xl object-cover border border-white/10" alt="" />
+              <img src={getGDriveThumbnailUrl(product.image_url)} className="w-16 h-16 rounded-2xl object-cover border border-white/10" alt="" referrerPolicy="no-referrer" />
               <div className="flex-1 min-w-0">
                  <p className="text-[10px] font-black uppercase text-yellow-500 leading-none mb-1">Elite Product</p>
                  <h4 className="text-sm font-black text-white uppercase italic truncate tracking-tight">{product.name}</h4>
@@ -322,6 +322,7 @@ export const ProductDetailView = ({ product, stats, referralCode, onBack, index,
                   src={getGDriveThumbnailUrl(product.image_url)} 
                   className="w-48 h-48 md:w-64 md:h-64 object-contain drop-shadow-[0_15px_40px_rgba(234,179,8,0.25)]" 
                   alt="" 
+                  referrerPolicy="no-referrer"
                />
                {trend.isPositive && (
                  <div className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[9px] font-black px-3 py-1 rounded-lg shadow-xl uppercase tracking-tighter animate-bounce-gentle">

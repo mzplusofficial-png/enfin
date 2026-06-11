@@ -768,7 +768,7 @@ export const MZPlusFlashOfferAdmin: React.FC = () => {
                              <>
                                <img 
                                  src={getGDriveThumbnailUrl(proofForm.after_image_url)} 
-                                 alt="Aperçu de la preuve" 
+                                 alt="Aperçu de la preuve" referrerPolicy="no-referrer" 
                                  className="w-full h-full object-cover" 
                                />
                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity">
@@ -829,7 +829,7 @@ export const MZPlusFlashOfferAdmin: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 overflow-hidden">
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-black shrink-0 border border-white/5 shadow-inner">
-                    <img src={getGDriveThumbnailUrl(p.after_image_url)} className="w-full h-full object-cover" />
+                    <img src={getGDriveThumbnailUrl(p.after_image_url)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase text-white truncate flex items-center gap-1.5">

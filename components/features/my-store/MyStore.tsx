@@ -46,6 +46,7 @@ import { PublicStorefront } from "./PublicStorefront.tsx";
 import { StoreSettingsModal } from "./StoreSettingsModal.tsx";
 import { StoreStats } from "./StoreStats.tsx";
 import { DynamicPremiumUpsell } from "./DynamicPremiumUpsell.tsx";
+import { getGDriveThumbnailUrl } from "../../../lib/googleDrive";
 
 import { StoreFAQ } from "./StoreFAQ.tsx";
 
@@ -138,9 +139,10 @@ const CelebrationOverlay = ({
       >
         <div className="w-40 h-40 rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(16,185,129,0.5)] border-4 border-emerald-400/50 relative mb-8">
           <img
-            src={product.image_url}
+            src={getGDriveThumbnailUrl(product.image_url)}
             alt={product.name}
             className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/50 to-transparent"></div>
         </div>
@@ -936,9 +938,10 @@ export const MyStore: React.FC<MyStoreProps> = ({
                     <div className="flex items-center gap-4 p-5 sm:p-6 border-b border-white/5 bg-white/[0.01]">
                       <div className="w-14 h-14 rounded-xl overflow-hidden bg-black shrink-0 relative border border-white/5">
                         <img
-                          src={analyzedProduct.image_url}
+                          src={getGDriveThumbnailUrl(analyzedProduct.image_url)}
                           alt={analyzedProduct.name}
                           className="w-full h-full object-cover opacity-80"
+                          referrerPolicy="no-referrer"
                         />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -1210,9 +1213,10 @@ export const MyStore: React.FC<MyStoreProps> = ({
                         <div className="flex gap-4 sm:gap-6 items-start relative z-10">
                           <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-[18px] overflow-hidden bg-black shrink-0 border border-white/5 relative">
                             <img
-                              src={product.image_url}
+                              src={getGDriveThumbnailUrl(product.image_url)}
                               alt={product.name}
                               className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-700 group-hover:scale-110"
+                              referrerPolicy="no-referrer"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
                           </div>
@@ -1414,9 +1418,10 @@ export const MyStore: React.FC<MyStoreProps> = ({
                     >
                       <div className="w-20 h-20 rounded-2xl overflow-hidden bg-black shrink-0 shadow-lg relative">
                         <img
-                          src={product.image_url}
+                          src={getGDriveThumbnailUrl(product.image_url)}
                           alt={product.name}
                           className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
                         />
                         <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
                       </div>
@@ -1513,9 +1518,10 @@ export const MyStore: React.FC<MyStoreProps> = ({
                   <div className="flex items-center gap-4 flex-1">
                     <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-black border border-white/5 overflow-hidden shrink-0 shadow-2xl">
                       <img
-                        src={selectedCatalogProduct.image_url}
+                        src={getGDriveThumbnailUrl(selectedCatalogProduct.image_url)}
                         alt={selectedCatalogProduct.name}
                         className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
                       />
                     </div>
                     <div className="flex flex-col">

@@ -707,7 +707,7 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
               <div key={p.id} className="p-5 bg-[#0a0a0a] border border-white/5 rounded-2xl space-y-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-lg bg-neutral-900 border border-white/5 overflow-hidden flex-shrink-0">
-                    <img src={getGDriveThumbnailUrl(p.image_url)} className="w-full h-full object-cover opacity-50" />
+                    <img src={getGDriveThumbnailUrl(p.image_url)} className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-black uppercase text-white text-sm truncate">{p.name}</div>
@@ -784,7 +784,7 @@ export const AffiliationSystem: React.FC<AffiliationSystemProps> = ({
                       <td className="p-8">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-lg bg-neutral-900 border border-white/5 overflow-hidden">
-                            <img src={getGDriveThumbnailUrl(p.image_url)} className="w-full h-full object-cover opacity-50" />
+                            <img src={getGDriveThumbnailUrl(p.image_url)} className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
                           </div>
                           <div className="flex flex-col">
                             <span className="font-black uppercase text-white">{p.name}</span>
@@ -1236,6 +1236,7 @@ const ProductCard = ({ product, clicks, referralCode, index }: any) => {
               src={getGDriveThumbnailUrl(product.image_url)} 
               className="w-full h-full object-contain drop-shadow-xl" 
               alt="" 
+              referrerPolicy="no-referrer"
             />
           </div>
           {trend.isPositive && (
