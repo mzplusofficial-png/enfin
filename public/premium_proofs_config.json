@@ -1,0 +1,47 @@
+[
+  {
+    "id": "7b67c2b9-5770-47a7-9836-1192a79f6c6d",
+    "created_at": "2026-06-08T03:50:22.453348+00:00",
+    "name": "soufa bakari ",
+    "before_amount": "0",
+    "after_amount": "350000",
+    "time_frame": "18 jours ",
+    "before_image_url": "https://drive.google.com/file/d/1ufBs7y_MYdOcw9st0BpScHoy_3hV26jW/view?usp=drive_link",
+    "after_image_url": "https://drive.google.com/file/d/1ufBs7y_MYdOcw9st0BpScHoy_3hV26jW/view?usp=drive_link",
+    "sort_order": 1,
+    "description": "",
+    "award_type": "exceptional_result font-bold text-yellow-500",
+    "milestone_title": "",
+    "is_active": true
+  },
+  {
+    "id": "da2f9798-3d84-4f65-8124-0863a685f191",
+    "created_at": "2026-06-08T03:48:54.137595+00:00",
+    "name": "Aladin mousa ",
+    "before_amount": "0",
+    "after_amount": "475000",
+    "time_frame": "28 jours ",
+    "before_image_url": "",
+    "after_image_url": "https://drive.google.com/file/d/1vKMy7iKAc4yUaNI-kClV9ovGKbe8HiWK/view?usp=drive_link",
+    "sort_order": 0,
+    "description": "",
+    "award_type": "first_sale",
+    "milestone_title": "",
+    "is_active": true
+  },
+  {
+    "id": "6e61b7f8-6e1b-4503-8e33-ce013526b56e",
+    "created_at": "2026-06-08T03:52:28.540016+00:00",
+    "name": "Mr. YAMIS",
+    "before_amount": "0",
+    "after_amount": "60000",
+    "time_frame": "7 jours ",
+    "before_image_url": "",
+    "after_image_url": "",
+    "sort_order": 0,
+    "description": "",
+    "award_type": "first_sale",
+    "milestone_title": "",
+    "is_active": true
+  }
+]
