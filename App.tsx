@@ -44,8 +44,6 @@ import { XPRewardModal } from './components/features/gamification/XPRewardModal.
 import { ShareModal } from './components/features/gamification/ShareModal.tsx';
 import { ChallengePresentation } from './components/features/challenges/ChallengePresentation.tsx';
 import { WeeklyChallenge } from './components/features/challenges/WeeklyChallenge.tsx';
-import { BestSellerChallenge } from './components/features/challenges/BestSellerChallenge.tsx';
-import { ErrorBoundary } from './components/ui/ErrorBoundary.tsx';
 import { rewardUserXP } from './services/gamification.ts';
 import { PROGRESSION_LEVELS } from './components/features/progression/LiquidProgressionTube.tsx';
 import { LevelUpCelebration } from './components/features/community/LevelUpCelebration.tsx';
@@ -57,25 +55,8 @@ import { BonusHub } from './components/features/bonus/BonusHub.tsx';
 import { BonusContentReader } from './components/features/bonus/BonusContentReader.tsx';
 import { getBonusContent } from './components/features/formation/bonusContentData.ts';
 import { AdminSecurityWall } from './components/AdminSecurityWall.tsx';
-import { useCurrency } from './hooks/useCurrency.ts';
 
 const App: React.FC = () => {
-  const { currency, rates } = useCurrency();
-
-  // Custom captivating currency algorithm: converts 20 000 XAF dynamically, avoids commas or trailing decimals, adds elegant space separator.
-  const getCaptivatingAmount = (amountXAF: number) => {
-    const rate = rates[currency] || 1;
-    const converted = Math.round(amountXAF / rate);
-    const spaced = converted.toLocaleString('fr-FR').replace(/,/g, ' ').replace(/\s+/g, ' ');
-    let label = currency;
-    if (currency === 'XOF' || currency === 'XAF') {
-      label = 'FCFA';
-    }
-    return `${spaced} ${label}`;
-  };
-
-  const formattedReward = getCaptivatingAmount(20000);
-
   const [session, setSession] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const profileRef = useRef<UserProfile | null>(null);
@@ -152,8 +133,6 @@ const App: React.FC = () => {
   const [showDay2UpsellPopup, setShowDay2UpsellPopup] = useState(false);
   const [showDay2FailedUpsellPopup, setShowDay2FailedUpsellPopup] = useState(false);
   const [bonusContent, setBonusContent] = useState<{ id: string; title: string; content: string; previewUrl?: string } | null>(null);
-  const [isChallengePage, setIsChallengePage] = useState(false);
-  const [showChallengeBanner, setShowChallengeBanner] = useState(false);
   
   const { triggerAxisMessage, hideAxis, setIsChatOpen, setChatUnlocked } = useAxis();
 
@@ -1083,16 +1062,8 @@ const App: React.FC = () => {
     const handleNavigateDashboard = () => {
       setActiveTab('dashboard');
     };
-    const handleNavigateChallenge = () => {
-      setIsChallengePage(true);
-      window.history.pushState({}, '', '/challenge/meilleur-vendeur');
-    };
     window.addEventListener('mz-navigate-dashboard', handleNavigateDashboard);
-    window.addEventListener('mz-navigate-challenge', handleNavigateChallenge);
-    return () => {
-      window.removeEventListener('mz-navigate-dashboard', handleNavigateDashboard);
-      window.removeEventListener('mz-navigate-challenge', handleNavigateChallenge);
-    };
+    return () => window.removeEventListener('mz-navigate-dashboard', handleNavigateDashboard);
   }, []);
 
   // Service Worker Registration for FCM & background notifications
@@ -1354,12 +1325,6 @@ const App: React.FC = () => {
         const hash = window.location.hash.toLowerCase();
 
         if (
-          path === '/challenge/meilleur-vendeur' ||
-          path.endsWith('/challenge/meilleur-vendeur') ||
-          hash === '#challenge-meilleur-vendeur'
-        ) {
-          setIsChallengePage(true);
-        } else if (
           path === '/admin' || 
           path.endsWith('/admin') || 
           hash === '#admin' || 
@@ -1564,30 +1529,6 @@ const App: React.FC = () => {
     }
   }, [activeTab]);
 
-  useEffect(() => {
-    if (localStorage.getItem('mz_challenge_bestseller_banner_dismissed') === 'true') {
-      return;
-    }
-    if (!userProfile || !userProfile.created_at) {
-      return;
-    }
-
-    const regTime = new Date(userProfile.created_at).getTime();
-
-    const checkTime = () => {
-      const elapsed = Date.now() - regTime;
-      if (elapsed >= 3 * 60 * 1000) {
-        setShowChallengeBanner(true);
-        clearInterval(timer);
-      }
-    };
-
-    checkTime();
-    const timer = setInterval(checkTime, 10000);
-
-    return () => clearInterval(timer);
-  }, [userProfile]);
-
   // Notification d'accueil si retour de Chariow (merci=true)
   useEffect(() => {
     if (purchaseStep === 'success') {
@@ -1730,24 +1671,6 @@ const App: React.FC = () => {
     return <SystemInitiator loading={loading} />;
   }
 
-  if (isChallengePage) {
-    return (
-      <ErrorBoundary>
-        <BestSellerChallenge 
-          profile={userProfile}
-          onBackToDashboard={() => {
-            setIsChallengePage(false);
-            window.history.replaceState({}, '', '/');
-          }}
-          onLoginClick={() => {
-            setIsChallengePage(false);
-            window.history.replaceState({}, '', '/');
-          }}
-        />
-      </ErrorBoundary>
-    );
-  }
-
   if (isAdminView) {
     return (
       <AdminSecurityWall 
@@ -1819,11 +1742,10 @@ const App: React.FC = () => {
       isMenuOpen={isMenuOpen}
       setIsMenuOpen={setIsMenuOpen}
     >
-      <ErrorBoundary>
-        <ShareModal isVisible={showSharePopup} onClose={handleShareClose} referralCode={userProfile?.referral_code} />
-        <PremiumAccessGate />
-        
-        <PushDisplay profile={userProfile} />
+      <ShareModal isVisible={showSharePopup} onClose={handleShareClose} referralCode={userProfile?.referral_code} />
+      <PremiumAccessGate />
+      
+      <PushDisplay profile={userProfile} />
 
       {/* Foreground Notification Toast (FCM) */}
       {notification && (
@@ -2328,80 +2250,6 @@ const App: React.FC = () => {
           setActiveTab('flash_offer');
         }}
       />
-
-      <AnimatePresence>
-        {showChallengeBanner && (
-          <motion.div
-            initial={{ y: 150, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 150, opacity: 0 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed bottom-6 left-4 right-4 md:left-auto md:right-6 md:w-96 z-[90] bg-neutral-950/95 border border-yellow-500/40 rounded-[2rem] p-6 shadow-[0_20px_50px_rgba(234,179,8,0.25)] border-t-yellow-500 border-r-purple-500 backdrop-blur-xl"
-          >
-            <button 
-              onClick={() => {
-                localStorage.setItem('mz_challenge_bestseller_banner_dismissed', 'true');
-                setShowChallengeBanner(false);
-              }}
-              className="absolute top-4 right-4 text-neutral-400 hover:text-white transition-colors p-1"
-            >
-              <X size={15} />
-            </button>
-
-            <div className="space-y-4">
-              {/* Badge animé */}
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                </span>
-                <span className="text-[9px] font-black uppercase tracking-[0.25em] text-red-500 animate-pulse">
-                  🔥 ÉVÉNEMENT EN COURS
-                </span>
-              </div>
-
-              {/* Grand texte + Sous-texte */}
-              <div className="space-y-2">
-                <h4 className="text-white text-xl font-extrabold uppercase italic tracking-tight flex items-center gap-1.5">
-                  🏆 Gagne <span className="bg-gradient-to-r from-yellow-300 to-amber-500 bg-clip-text text-transparent font-mono font-black">{formattedReward}</span>
-                </h4>
-                <p className="text-neutral-200 text-xs font-semibold leading-relaxed">
-                  Transforme tes visites en ventes et monte dans le classement.
-                </p>
-                <p className="text-purple-300 text-[10px] font-bold flex items-center gap-1">
-                  <span>Une récompense mystère attend aussi le Top 5 👀</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-col gap-2">
-              <button
-                onClick={() => {
-                  localStorage.setItem('mz_challenge_bestseller_banner_dismissed', 'true');
-                  setShowChallengeBanner(false);
-                  setIsChallengePage(true);
-                  window.history.pushState({}, '', '/challenge/meilleur-vendeur');
-                }}
-                className="w-full py-3 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-black font-black text-xs uppercase tracking-wider rounded-xl transition-all hover:shadow-[0_0_15px_rgba(234,179,8,0.4)] text-center cursor-pointer"
-              >
-                ⚔️ Participer maintenant
-              </button>
-              <button
-                onClick={() => {
-                  localStorage.setItem('mz_challenge_bestseller_banner_dismissed', 'true');
-                  setShowChallengeBanner(false);
-                  setIsChallengePage(true);
-                  window.history.pushState({}, '', '/challenge/meilleur-vendeur');
-                }}
-                className="w-full py-2.5 bg-white/5 hover:bg-white/10 text-neutral-300 font-extrabold text-[10px] uppercase tracking-wider rounded-xl transition-colors text-center cursor-pointer"
-              >
-                👑 Voir les meilleurs vendeurs
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      </ErrorBoundary>
     </DashboardLayout>
   );
 };
