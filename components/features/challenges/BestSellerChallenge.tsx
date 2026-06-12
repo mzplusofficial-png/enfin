@@ -27,6 +27,7 @@ import { UserProfile } from '../../../types';
 import { supabase } from '../../../services/supabase';
 import confetti from 'canvas-confetti';
 import { useCurrency } from '../../../hooks/useCurrency.ts';
+import { useAxis } from '../axis/AxisProvider.tsx';
 
 interface BestSellerChallengeProps {
   profile: UserProfile | null;
@@ -166,6 +167,106 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
   onLoginClick
 }) => {
   const { currency, rates } = useCurrency();
+  const { triggerAxisMessage, hideAxis } = useAxis();
+
+  const startAxisExplanation = useCallback(() => {
+    function finishExplanation() {
+      localStorage.setItem('mz_axis_challenge_explained', 'true');
+      hideAxis();
+    }
+
+    // Étape 1 : Présentation du challenge du meilleur vendeur
+    function step1() {
+      triggerAxisMessage(
+        "Allô ! C'est Axis. 👁️ Bienvenue sur le Challenge du Meilleur Vendeur 🏆 ! Laisse-moi t'expliquer comment fonctionnent les règles du jeu.",
+        'guiding',
+        0,
+        {
+          label: "Suivant ➔",
+          action: step2,
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    }
+
+    // Étape 2 : Taux de conversion
+    function step2() {
+      triggerAxisMessage(
+        "Ton classement ne dépend pas seulement du nombre de ventes. Ce qui compte surtout, c’est ta capacité à transformer tes visiteurs en acheteurs. Le taux de conversion est calculé en faisant le nombre de tes ventes validées divisé par le nombre de tes visites réelles. 📈",
+        'action',
+        0,
+        {
+          label: "Suivant ➔",
+          action: step3,
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    }
+
+    // Étape 3 : Exemple parlant
+    function step3() {
+      triggerAxisMessage(
+        "Si 100 personnes visitent ta boutique et que 10 achètent ➔ ton taux de conversion est de 10% (10 ÷ 100). C'est bien meilleur que quelqu’un qui fait 10 ventes sur 500 visites (un taux de 2% seulement). 🎯 Simple et équitable !",
+        'progression',
+        0,
+        {
+          label: "Suivant ➔",
+          action: step4,
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    }
+
+    // Étape 4 : Uniquement ventes validées
+    function step4() {
+      triggerAxisMessage(
+        "Attention, seules les ventes réellement validées et approuvées comptent. Les ventes en attente, les paiements échoués ou les commandes annulées ne sont jamais prises en compte. 🔥",
+        'warning',
+        0,
+        {
+          label: "Suivant ➔",
+          action: step5,
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    }
+
+    // Étape 5 : Message final et motivation
+    function step5() {
+      triggerAxisMessage(
+        "Maintenant tu connais les règles 👀\nFais venir les bonnes personnes, convertis mieux que les autres… et vise le sommet du classement 🏆⚔️",
+        'success',
+        0,
+        {
+          label: "Bonne chance 🚀",
+          action: finishExplanation,
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    }
+
+    step1();
+  }, [triggerAxisMessage, hideAxis]);
+
+  useEffect(() => {
+    // Déclenchement automatique s'il s'agit de la première visite de l'interface
+    if (localStorage.getItem('mz_axis_challenge_explained') !== 'true') {
+      const timer = setTimeout(() => {
+        startAxisExplanation();
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [startAxisExplanation]);
   
   // Custom captivating currency algorithm: converts 20 000 XAF dynamically, avoids commas or trailing decimals, adds elegant space separator.
   const getCaptivatingAmount = (amountXAF: number) => {
@@ -546,6 +647,17 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
             </span>
             <span className="text-[10px] uppercase tracking-wider font-mono text-neutral-400">Contest Live Actif</span>
           </div>
+          <span className="h-4 w-px bg-white/10 hidden xs:block" />
+          <button
+            onClick={() => {
+              playChime('click');
+              startAxisExplanation();
+            }}
+            className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-mono bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 px-2 py-1 rounded transition-all"
+          >
+            <Sparkles size={11} className="animate-pulse" />
+            <span>Guide Axis 👁️</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
