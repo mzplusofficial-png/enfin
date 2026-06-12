@@ -635,44 +635,44 @@ async function startServer() {
   const DEFAULT_PREMIUM_PROOFS: any[] = [
     {
       "id": "fb-1",
-      "name": "Valdes",
-      "milestone_title": "Ma première victoire",
+      "name": "soufa bakari",
+      "milestone_title": "Dépassement d'espoir",
       "before_amount": "0 FCFA",
-      "after_amount": "40 000 FCFA",
-      "time_frame": "En seulement 2 jours",
-      "description": "J’ai passé 10 jours en mode standard à attendre sans rien recevoir. J'ai franchi le pas pour activer Premium un vendredi soir. Le dimanche matin, premier virement de 40 000 FCFA sur mon compte !",
-      "before_image_url": "",
-      "after_image_url": "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&q=80&w=400",
+      "after_amount": "350 000 FCFA",
+      "time_frame": "En 18 jours",
+      "description": "Une réussite marquante de soufa bakari qui de 0 est passé à un total de 350 000 FCFA en seulement 18 jours de travail !",
+      "before_image_url": "https://drive.google.com/file/d/1ufBs7y_MYdOcw9st0BpScHoy_3hV26jW/view?usp=drive_link",
+      "after_image_url": "https://drive.google.com/file/d/1ufBs7y_MYdOcw9st0BpScHoy_3hV26jW/view?usp=drive_link",
       "country_flag": "🇨🇮 Côte d'Ivoire",
-      "award_type": "first_sale",
+      "award_type": "exceptional_result",
       "is_active": true,
       "sort_order": 1
     },
     {
       "id": "fb-2",
-      "name": "Ibrahim",
-      "milestone_title": "La délivrance totale",
-      "before_amount": "5 000 FCFA",
-      "after_amount": "150 000 FCFA",
-      "time_frame": "En 5 jours",
-      "description": "Tout le monde me disait que ça n'allait jamais marcher pour moi. J'ai quand même activé Premium en me disant que je n'avais rien à perdre. En 5 jours, j'ai cumulé et retiré 150 000 FCFA. Une immense fierté devant mes amis !",
+      "name": "Aladin mousa",
+      "milestone_title": "Premiers gains majeurs",
+      "before_amount": "0 FCFA",
+      "after_amount": "475 000 FCFA",
+      "time_frame": "En 28 jours",
+      "description": "Détermination et persévérance payantes ! Aladin mousa a généré 475 000 FCFA en moins d'un mois !",
       "before_image_url": "",
-      "after_image_url": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=400",
+      "after_image_url": "https://drive.google.com/file/d/1vKMy7iKAc4yUaNI-kClV9ovGKbe8HiWK/view?usp=drive_link",
       "country_flag": "🇨🇲 Cameroun",
-      "award_type": "high_earnings",
+      "award_type": "first_sale",
       "is_active": true,
       "sort_order": 2
     },
     {
       "id": "fb-3",
-      "name": "Yasmine",
-      "milestone_title": "Le soulagement familial",
-      "before_amount": "15 000 FCFA",
-      "after_amount": "500 000 FCFA",
-      "time_frame": "En 2 semaines",
-      "description": "Je voulais juste gagner un peu de quoi soulager mes fins de mois difficiles. Quand j'ai activé Premium, tout s'est accéléré tellement vite. J'ai fait 500 000 FCFA en deux semaines. Cela a changé la vie de toute ma maison.",
+      "name": "Mr. YAMIS",
+      "milestone_title": "Première victoire",
+      "before_amount": "0 FCFA",
+      "after_amount": "60 000 FCFA",
+      "time_frame": "En 7 jours",
+      "description": "Une merveilleuse entrée en matière pour Mr. YAMIS avec 60 000 FCFA cumulés lors de sa première semaine d'activité !",
       "before_image_url": "",
-      "after_image_url": "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&q=80&w=400",
+      "after_image_url": "https://drive.google.com/file/d/1vKMy7iKAc4yUaNI-kClV9ovGKbe8HiWK/view?usp=drive_link",
       "country_flag": "🇸🇳 Sénégal",
       "award_type": "first_withdrawal",
       "is_active": true,
@@ -2742,6 +2742,8 @@ async function startServer() {
     });
   });
 
+  app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -2762,6 +2764,13 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log('[Startup] Enclenchement de la réplication des fichiers statiques Google Drive en tâche de fond...');
+    replicateGDriveFileOnServer('1ufBs7y_MYdOcw9st0BpScHoy_3hV26jW', 'soufa_bakari.png')
+      .then(url => console.log('[Startup] Réplication réussie pour soufa bakari:', url))
+      .catch(e => console.warn('[Startup] Échec de la réplication de fond pour soufa bakari:', e.message));
+    replicateGDriveFileOnServer('1vKMy7iKAc4yUaNI-kClV9ovGKbe8HiWK', 'aladin_mousa.png')
+      .then(url => console.log('[Startup] Réplication réussie pour aladin mousa:', url))
+      .catch(e => console.warn('[Startup] Échec de la réplication de fond pour aladin mousa:', e.message));
   });
 }
 
