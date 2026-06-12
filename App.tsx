@@ -45,6 +45,7 @@ import { ShareModal } from './components/features/gamification/ShareModal.tsx';
 import { ChallengePresentation } from './components/features/challenges/ChallengePresentation.tsx';
 import { WeeklyChallenge } from './components/features/challenges/WeeklyChallenge.tsx';
 import { BestSellerChallenge } from './components/features/challenges/BestSellerChallenge.tsx';
+import { ErrorBoundary } from './components/ui/ErrorBoundary.tsx';
 import { rewardUserXP } from './services/gamification.ts';
 import { PROGRESSION_LEVELS } from './components/features/progression/LiquidProgressionTube.tsx';
 import { LevelUpCelebration } from './components/features/community/LevelUpCelebration.tsx';
@@ -1731,17 +1732,19 @@ const App: React.FC = () => {
 
   if (isChallengePage) {
     return (
-      <BestSellerChallenge 
-        profile={userProfile}
-        onBackToDashboard={() => {
-          setIsChallengePage(false);
-          window.history.replaceState({}, '', '/');
-        }}
-        onLoginClick={() => {
-          setIsChallengePage(false);
-          window.history.replaceState({}, '', '/');
-        }}
-      />
+      <ErrorBoundary>
+        <BestSellerChallenge 
+          profile={userProfile}
+          onBackToDashboard={() => {
+            setIsChallengePage(false);
+            window.history.replaceState({}, '', '/');
+          }}
+          onLoginClick={() => {
+            setIsChallengePage(false);
+            window.history.replaceState({}, '', '/');
+          }}
+        />
+      </ErrorBoundary>
     );
   }
 
@@ -1816,10 +1819,11 @@ const App: React.FC = () => {
       isMenuOpen={isMenuOpen}
       setIsMenuOpen={setIsMenuOpen}
     >
-      <ShareModal isVisible={showSharePopup} onClose={handleShareClose} referralCode={userProfile?.referral_code} />
-      <PremiumAccessGate />
-      
-      <PushDisplay profile={userProfile} />
+      <ErrorBoundary>
+        <ShareModal isVisible={showSharePopup} onClose={handleShareClose} referralCode={userProfile?.referral_code} />
+        <PremiumAccessGate />
+        
+        <PushDisplay profile={userProfile} />
 
       {/* Foreground Notification Toast (FCM) */}
       {notification && (
@@ -2397,6 +2401,7 @@ const App: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      </ErrorBoundary>
     </DashboardLayout>
   );
 };

@@ -169,78 +169,74 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
   const { currency, rates } = useCurrency();
   const { triggerAxisMessage, hideAxis } = useAxis();
 
-  const startAxisExplanation = useCallback(() => {
-    function finishExplanation() {
-      localStorage.setItem('mz_axis_challenge_explained', 'true');
-      hideAxis();
-    }
+  const [axisStep, setAxisStep] = useState<number | null>(null);
 
-    // Étape 1 : Présentation du challenge du meilleur vendeur
-    function step1() {
+  const startAxisExplanation = useCallback(() => {
+    setAxisStep(1);
+  }, []);
+
+  useEffect(() => {
+    if (axisStep === null) return;
+
+    const finishExplanation = () => {
+      localStorage.setItem('mz_axis_challenge_explained', 'true');
+      setAxisStep(null);
+      hideAxis();
+    };
+
+    if (axisStep === 1) {
       triggerAxisMessage(
         "Allô ! C'est Axis. 👁️ Bienvenue sur le Challenge du Meilleur Vendeur 🏆 ! Laisse-moi t'expliquer comment fonctionnent les règles du jeu.",
         'guiding',
         0,
         {
           label: "Suivant ➔",
-          action: step2,
+          action: () => setAxisStep(2),
           secondaryLabel: "J'ai compris",
           secondaryAction: finishExplanation
         },
         'bottom-right'
       );
-    }
-
-    // Étape 2 : Taux de conversion
-    function step2() {
+    } else if (axisStep === 2) {
       triggerAxisMessage(
         "Ton classement ne dépend pas seulement du nombre de ventes. Ce qui compte surtout, c’est ta capacité à transformer tes visiteurs en acheteurs. Le taux de conversion est calculé en faisant le nombre de tes ventes validées divisé par le nombre de tes visites réelles. 📈",
         'action',
         0,
         {
           label: "Suivant ➔",
-          action: step3,
+          action: () => setAxisStep(3),
           secondaryLabel: "J'ai compris",
           secondaryAction: finishExplanation
         },
         'bottom-right'
       );
-    }
-
-    // Étape 3 : Exemple parlant
-    function step3() {
+    } else if (axisStep === 3) {
       triggerAxisMessage(
         "Si 100 personnes visitent ta boutique et que 10 achètent ➔ ton taux de conversion est de 10% (10 ÷ 100). C'est bien meilleur que quelqu’un qui fait 10 ventes sur 500 visites (un taux de 2% seulement). 🎯 Simple et équitable !",
         'progression',
         0,
         {
           label: "Suivant ➔",
-          action: step4,
+          action: () => setAxisStep(4),
           secondaryLabel: "J'ai compris",
           secondaryAction: finishExplanation
         },
         'bottom-right'
       );
-    }
-
-    // Étape 4 : Uniquement ventes validées
-    function step4() {
+    } else if (axisStep === 4) {
       triggerAxisMessage(
         "Attention, seules les ventes réellement validées et approuvées comptent. Les ventes en attente, les paiements échoués ou les commandes annulées ne sont jamais prises en compte. 🔥",
         'warning',
         0,
         {
           label: "Suivant ➔",
-          action: step5,
+          action: () => setAxisStep(5),
           secondaryLabel: "J'ai compris",
           secondaryAction: finishExplanation
         },
         'bottom-right'
       );
-    }
-
-    // Étape 5 : Message final et motivation
-    function step5() {
+    } else if (axisStep === 5) {
       triggerAxisMessage(
         "Maintenant tu connais les règles 👀\nFais venir les bonnes personnes, convertis mieux que les autres… et vise le sommet du classement 🏆⚔️",
         'success',
@@ -254,19 +250,17 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
         'bottom-right'
       );
     }
-
-    step1();
-  }, [triggerAxisMessage, hideAxis]);
+  }, [axisStep, triggerAxisMessage, hideAxis]);
 
   useEffect(() => {
     // Déclenchement automatique s'il s'agit de la première visite de l'interface
     if (localStorage.getItem('mz_axis_challenge_explained') !== 'true') {
       const timer = setTimeout(() => {
-        startAxisExplanation();
+        setAxisStep(1);
       }, 1200);
       return () => clearTimeout(timer);
     }
-  }, [startAxisExplanation]);
+  }, []);
   
   // Custom captivating currency algorithm: converts 20 000 XAF dynamically, avoids commas or trailing decimals, adds elegant space separator.
   const getCaptivatingAmount = (amountXAF: number) => {
