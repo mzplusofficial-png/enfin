@@ -322,7 +322,7 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
     }
 
     try {
-      // 3. Fetch public completed or approved commissions (only validated sales, excluding 'pending' which represents initial clicks)
+      // 3. Fetch public completed or approved commissions
       const { data: sData, error: sErr } = await supabase
         .from('commissions')
         .select('user_id, status')
@@ -429,24 +429,11 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
 
     fetchedLeaderboard = [...activeCompetitors, ...cleanMockContestants];
     
-    // Sort logic perfectly adapted:
-    // - Positive conversion rates are sorted descending by conversionRate.
-    // - If both rates are equal or are 0.00% (or zero), compare by visits descending to determine rank!
+    // Sort: First by conversionRate descending. If rate is equal, sort by visits descending
     fetchedLeaderboard.sort((a, b) => {
-      const aConv = a.conversionRate || 0;
-      const bConv = b.conversionRate || 0;
-      
-      if (aConv > 0 && bConv > 0) {
-        if (bConv !== aConv) {
-          return bConv - aConv;
-        }
-        return b.visits - a.visits;
+      if (b.conversionRate !== a.conversionRate) {
+        return b.conversionRate - a.conversionRate;
       }
-      
-      if (aConv > 0 && bConv === 0) return -1;
-      if (aConv === 0 && bConv > 0) return 1;
-      
-      // If both conversion rates are equal to 0, compare based on visits descending
       return b.visits - a.visits;
     });
 
