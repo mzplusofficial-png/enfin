@@ -412,7 +412,7 @@ export const WeeklyChallenge: React.FC<{ profile: UserProfile, teamCount: number
           .from('commissions')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', profile.id)
-          .in('status', ['approved', 'pending', 'finalized'])
+          .in('status', ['approved', 'finalized'])
           .gte('created_at', startOfWeek.toISOString());
           
        setWeeklySales(count || 0);

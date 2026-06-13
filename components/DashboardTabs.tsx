@@ -53,6 +53,7 @@ import { DailyMission } from "./features/challenges/DailyMission.tsx";
 import { EvolutionFeed } from "./features/community/EvolutionFeed.tsx";
 import { WhatsAppShareModal } from "./features/community/WhatsAppShareModal.tsx";
 import { shareEvolution, generateWhatsAppLink, getRandomMessage, checkIfAchievementShared } from "../services/evolutionService.ts";
+import { BestSellerChallengeBanner } from "./features/mz-plus-offer/BestSellerChallengeBanner.tsx";
 
 
 const UserRewardsSection: React.FC<{ profile: UserProfile | null }> = ({
@@ -1238,6 +1239,17 @@ export const ProfileTab: React.FC<any> = ({
           <ChevronRight size={18} className="ml-auto text-amber-500" />
         </button>
       )}
+
+      {/* Dynamic Best Seller Challenge Campaign Banner (Gated at >= 3 mins) */}
+      <BestSellerChallengeBanner 
+        profile={profile}
+        onParticipate={() => {
+          window.dispatchEvent(new CustomEvent("mz-navigate-challenge"));
+        }}
+        onSeeLeaderboard={() => {
+          window.dispatchEvent(new CustomEvent("mz-navigate-challenge"));
+        }}
+      />
 
       {/* Main Glassmorphism Identity Card */}
       <div className="relative group overflow-hidden rounded-[2.5rem] border border-white/5 bg-[#0d0d0c]/80 backdrop-blur-xl p-8 shadow-2xl">
