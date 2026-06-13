@@ -27,6 +27,7 @@ import { UserProfile } from '../../../types';
 import { supabase } from '../../../services/supabase';
 import confetti from 'canvas-confetti';
 import { useCurrency } from '../../../hooks/useCurrency.ts';
+import { useAxis } from '../axis/AxisProvider.tsx';
 
 interface BestSellerChallengeProps {
   profile: UserProfile | null;
@@ -166,6 +167,100 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
   onLoginClick
 }) => {
   const { currency, rates } = useCurrency();
+  const { triggerAxisMessage, hideAxis } = useAxis();
+
+  const [axisStep, setAxisStep] = useState<number | null>(null);
+
+  const startAxisExplanation = useCallback(() => {
+    setAxisStep(1);
+  }, []);
+
+  useEffect(() => {
+    if (axisStep === null) return;
+
+    const finishExplanation = () => {
+      localStorage.setItem('mz_axis_challenge_explained', 'true');
+      setAxisStep(null);
+      hideAxis();
+    };
+
+    if (axisStep === 1) {
+      triggerAxisMessage(
+        "Allô ! C'est Axis. 👁️ Bienvenue sur le Challenge du Meilleur Vendeur 🏆 ! Laisse-moi t'expliquer comment fonctionnent les règles du jeu.",
+        'guiding',
+        0,
+        {
+          label: "Suivant ➔",
+          action: () => setAxisStep(2),
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    } else if (axisStep === 2) {
+      triggerAxisMessage(
+        "Ton classement ne dépend pas seulement du nombre de ventes. Ce qui compte surtout, c’est ta capacité à transformer tes visiteurs en acheteurs. Le taux de conversion est calculé en faisant le nombre de tes ventes validées divisé par le nombre de tes visites réelles. 📈",
+        'action',
+        0,
+        {
+          label: "Suivant ➔",
+          action: () => setAxisStep(3),
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    } else if (axisStep === 3) {
+      triggerAxisMessage(
+        "Si 100 personnes visitent ta boutique et que 10 achètent ➔ ton taux de conversion est de 10% (10 ÷ 100). C'est bien meilleur que quelqu’un qui fait 10 ventes sur 500 visites (un taux de 2% seulement). 🎯 Simple et équitable !",
+        'progression',
+        0,
+        {
+          label: "Suivant ➔",
+          action: () => setAxisStep(4),
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    } else if (axisStep === 4) {
+      triggerAxisMessage(
+        "Attention, seules les ventes réellement validées et approuvées comptent. Les ventes en attente, les paiements échoués ou les commandes annulées ne sont jamais prises en compte. 🔥",
+        'warning',
+        0,
+        {
+          label: "Suivant ➔",
+          action: () => setAxisStep(5),
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    } else if (axisStep === 5) {
+      triggerAxisMessage(
+        "Maintenant tu connais les règles 👀\nFais venir les bonnes personnes, convertis mieux que les autres… et vise le sommet du classement 🏆⚔️",
+        'success',
+        0,
+        {
+          label: "Bonne chance 🚀",
+          action: finishExplanation,
+          secondaryLabel: "J'ai compris",
+          secondaryAction: finishExplanation
+        },
+        'bottom-right'
+      );
+    }
+  }, [axisStep, triggerAxisMessage, hideAxis]);
+
+  useEffect(() => {
+    // Déclenchement automatique s'il s'agit de la première visite de l'interface
+    if (localStorage.getItem('mz_axis_challenge_explained') !== 'true') {
+      const timer = setTimeout(() => {
+        setAxisStep(1);
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
   
   // Custom captivating currency algorithm: converts 20 000 XAF dynamically, avoids commas or trailing decimals, adds elegant space separator.
   const getCaptivatingAmount = (amountXAF: number) => {
@@ -260,7 +355,7 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch real statistics with defensive caching gating (reads/upserts only allowed once every 2 hours)
+  // Fetch real statistics with defensive caching gating (reads/upserts only allowed once every 10 seconds to protect database while keeping it ultra-fluent)
   const loadData = useCallback(async (forceRefetch = false) => {
     setLoadingStats(true);
     const activeUserId = profile?.id;
@@ -277,10 +372,10 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
       }
     }
     
-    // Cache Gate: 2 hours (7,200,000 milliseconds)
-    const CACHE_DURATION = 7200000;
+    // Cache Gate: 10 seconds to prevent fast hammering while keeping it fresh
+    const CACHE_DURATION = 10000;
     if (!forceRefetch && parseCache && parseCache.timestamp && (nowMs - parseCache.timestamp < CACHE_DURATION)) {
-      console.log("Loading Best Seller stats & Leaderboard from 2-hour cache");
+      console.log("Loading Best Seller stats & Leaderboard from 10-second cache");
       if (parseCache.leaderboard) {
         setLeaderboard(parseCache.leaderboard);
       }
@@ -293,145 +388,188 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
       return;
     }
     
-    // Expired, missing or forced -> Fetch fresh database records
-    let fetchedLeaderboard = [...LEADERBOARD_CONTESTANTS];
-    let finalUserStats = userStats;
+    // Fetch fresh database records
+    let fetchedLeaderboard: any[] = [];
+    let finalUserStats = { visits: 0, sales: 0, conversion: 0 };
+    
+    let dbUsersList: any[] = [];
+    let dbAllClicks: any[] = [];
+    let dbAllSales: any[] = [];
     
     try {
-      // 1. If user is logged in, sync their local metrics & upsert to public table FIRST so they are integrated in the leaderboard
-      if (activeUserId) {
-        // Sum clicks from product_stats
-        const { data: statsData, error: statsErr } = await supabase
-          .from('product_stats')
-          .select('clicks')
-          .eq('user_id', activeUserId);
-          
-        const clicksCount = statsErr ? 0 : (statsData?.reduce((sum, item) => sum + (item.clicks || 0), 0) || 0);
-        
-        // Count finalized commissions
-        const { data: salesData, error: salesErr } = await supabase
-          .from('commissions')
-          .select('id')
-          .eq('user_id', activeUserId)
-          .eq('status', 'finalized');
-          
-        const salesCount = salesErr ? 0 : (salesData?.length || 0);
-        const computedRate = clicksCount > 0 ? parseFloat(((salesCount / clicksCount) * 100).toFixed(2)) : 0;
-        
-        finalUserStats = {
-          visits: clicksCount,
-          sales: salesCount,
-          conversion: computedRate
-        };
-        setUserStats(finalUserStats);
-        
-        // Upsert stats of user to live challenger database
+      // 1. Fetch users profiles
+      const { data: uData, error: uErr } = await supabase
+        .from('users')
+        .select('id, full_name, country_code');
+      if (!uErr && uData) dbUsersList = uData;
+    } catch (e) {
+      console.warn("Could not load users list:", e);
+    }
+
+    try {
+      // 2. Fetch public clicks
+      const { data: cData, error: cErr } = await supabase
+        .from('product_stats')
+        .select('user_id, clicks');
+      if (!cErr && cData) dbAllClicks = cData;
+    } catch (e) {
+      console.warn("Could not load product clicks:", e);
+    }
+
+    try {
+      // 3. Fetch public completed or approved commissions (only validated sales, excluding 'pending' which represents initial clicks)
+      const { data: sData, error: sErr } = await supabase
+        .from('commissions')
+        .select('user_id, status')
+        .in('status', ['approved', 'finalized']);
+      if (!sErr && sData) dbAllSales = sData;
+    } catch (e) {
+      console.warn("Could not load commissions list:", e);
+    }
+
+    // Process and aggregate stats
+    const clicksByUser: Record<string, number> = {};
+    dbAllClicks.forEach(item => {
+      if (item.user_id) {
+        clicksByUser[item.user_id] = (clicksByUser[item.user_id] || 0) + (item.clicks || 0);
+      }
+    });
+
+    const salesByUser: Record<string, number> = {};
+    dbAllSales.forEach(item => {
+      if (item.user_id) {
+        salesByUser[item.user_id] = (salesByUser[item.user_id] || 0) + 1;
+      }
+    });
+
+    const activeCompetitors: any[] = [];
+    dbUsersList.forEach(user => {
+      const clicks = clicksByUser[user.id] || 0;
+      const sales = salesByUser[user.id] || 0;
+      const visits = clicks; // Strictly real visits/clicks from database
+      const conversionRate = visits > 0 ? parseFloat(((sales / visits) * 100).toFixed(2)) : 0.0;
+      
+      if (visits > 0 || sales > 0) {
+        activeCompetitors.push({
+          rank: 0,
+          name: user.full_name || 'Anonyme',
+          country: user.country_code ? `${user.country_code}` : '🌍 Afrique',
+          sales: sales,
+          visits: visits,
+          conversionRate: conversionRate,
+          isCurrentUser: activeUserId ? user.id === activeUserId : false,
+          avatarColor: "from-[#1f1f1d] to-[#121211]"
+        });
+      }
+    });
+
+    // Handle current user stats integration
+    if (activeUserId) {
+      const userClicks = clicksByUser[activeUserId] || 0;
+      const userSales = salesByUser[activeUserId] || 0;
+      const userVisits = userClicks; // Strictly real visits/clicks from database
+      const userConv = userVisits > 0 ? parseFloat(((userSales / userVisits) * 100).toFixed(2)) : 0.0;
+      
+      finalUserStats = {
+        visits: userVisits,
+        sales: userSales,
+        conversion: userConv
+      };
+      setUserStats(finalUserStats);
+      
+      // Upsert stats of user to live challenger database
+      try {
         await supabase
           .from('mz_best_seller_challenge')
           .upsert({
             user_id: activeUserId,
-            full_name: profile.full_name || 'Anonyme',
-            country: profile.country_code ? `${profile.country_code}` : '🌍 Afrique',
-            visits: clicksCount,
-            sales: salesCount,
-            conversion_rate: computedRate,
+            full_name: profile?.full_name || 'Anonyme',
+            country: profile?.country_code ? `${profile.country_code}` : '🌍 Afrique',
+            visits: userVisits,
+            sales: userSales,
+            conversion_rate: userConv,
             updated_at: new Date().toISOString()
           }, { onConflict: 'user_id' });
+      } catch (upsertErr) {
+        console.warn("Best seller challenge live-db sync fail (safely bypassed):", upsertErr);
       }
-      
-      // 2. Query all challenge records to display true ranks
-      const { data: dbLeaderboard, error: dbError } = await supabase
-        .from('mz_best_seller_challenge')
-        .select('*');
-        
-      if (!dbError && dbLeaderboard && dbLeaderboard.length > 0) {
-        fetchedLeaderboard = dbLeaderboard.map((item) => ({
+    }
+
+    // Ensure the current user is always listed even with 0 visits
+    if (activeUserId && profile) {
+      const alreadyIn = activeCompetitors.some(c => c.isCurrentUser);
+      if (!alreadyIn) {
+        activeCompetitors.push({
           rank: 0,
-          name: item.full_name,
-          country: item.country,
-          sales: item.sales || 0,
-          visits: item.visits || 0,
-          conversionRate: parseFloat((item.conversion_rate || 0).toFixed(2)),
-          isCurrentUser: activeUserId ? item.user_id === activeUserId : false,
-          avatarColor: "from-[#1f1f1d] to-[#121211]"
-        }));
-      } else {
-        // Fallback or default records if database was completely empty initially
-        fetchedLeaderboard = LEADERBOARD_CONTESTANTS.map((c) => ({
-          ...c,
-          isCurrentUser: false
-        }));
+          name: profile.full_name || 'Vous',
+          country: profile.country_code ? `${profile.country_code}` : '🌍 Afrique',
+          sales: finalUserStats.sales,
+          visits: finalUserStats.visits,
+          conversionRate: finalUserStats.conversion,
+          isCurrentUser: true,
+          avatarColor: "from-yellow-400 via-pink-500 to-purple-600"
+        });
       }
+    }
+
+    // Merge mock contestants to keep leaderboard active.
+    // To prevent duplication, exclude any mock contestant with the exact same name as a DB user.
+    const activeNames = new Set(activeCompetitors.map((u) => u.name.trim().toLowerCase()));
+    const cleanMockContestants = LEADERBOARD_CONTESTANTS.filter(
+      (c) => !activeNames.has(c.name.trim().toLowerCase())
+    ).map(c => ({
+      ...c,
+      isCurrentUser: false
+    }));
+
+    fetchedLeaderboard = [...activeCompetitors, ...cleanMockContestants];
+    
+    // Sort logic perfectly adapted:
+    // - Positive conversion rates are sorted descending by conversionRate.
+    // - If both rates are equal or are 0.00% (or zero), compare by visits descending to determine rank!
+    fetchedLeaderboard.sort((a, b) => {
+      const aConv = a.conversionRate || 0;
+      const bConv = b.conversionRate || 0;
       
-      // 3. Ensure the current logged-in user is integrated (even if visits is 0 or they aren't back from supabase yet)
-      if (activeUserId && finalUserStats) {
-        const hasRow = fetchedLeaderboard.some(item => item.isCurrentUser);
-        if (!hasRow) {
-          const userSlot = {
-            rank: 0,
-            name: profile.full_name || "Vous",
-            country: profile.country_code ? `${profile.country_code}` : "🌍 Afrique",
-            sales: finalUserStats.sales,
-            visits: finalUserStats.visits,
-            conversionRate: finalUserStats.conversion,
-            isCurrentUser: true,
-            avatarColor: "from-yellow-400 via-pink-500 to-purple-600"
-          };
-          fetchedLeaderboard.push(userSlot);
-        } else {
-          // Update their stats live in the list just in case
-          fetchedLeaderboard = fetchedLeaderboard.map(item => {
-            if (item.isCurrentUser) {
-              return {
-                ...item,
-                sales: finalUserStats.sales,
-                visits: finalUserStats.visits,
-                conversionRate: finalUserStats.conversion
-              };
-            }
-            return item;
-          });
-        }
-      }
-      
-      // 4. Sort: First by conversionRate descending. If rate is equal (or at 0), sort by visits descending!
-      fetchedLeaderboard.sort((a, b) => {
-        if (b.conversionRate !== a.conversionRate) {
-          return b.conversionRate - a.conversionRate;
+      if (aConv > 0 && bConv > 0) {
+        if (bConv !== aConv) {
+          return bConv - aConv;
         }
         return b.visits - a.visits;
-      });
+      }
+      
+      if (aConv > 0 && bConv === 0) return -1;
+      if (aConv === 0 && bConv > 0) return 1;
+      
+      // If both conversion rates are equal to 0, compare based on visits descending
+      return b.visits - a.visits;
+    });
 
-      // 5. Re-assign sequential rank numbers and appropriate colors after sort
-      fetchedLeaderboard.forEach((item, idx) => {
-        item.rank = idx + 1;
-        if (item.isCurrentUser) {
-          item.avatarColor = "from-yellow-400 via-pink-500 to-purple-600";
-        } else if (idx === 0) {
-          item.avatarColor = "from-yellow-400 to-amber-600";
-        } else {
-          item.avatarColor = "from-[#1f1f1d] to-[#121211]";
-        }
-      });
-      
-      setLeaderboard(fetchedLeaderboard);
-      
-      // Save results to cache payload
-      const cachePayload = {
-        timestamp: nowMs,
-        leaderboard: fetchedLeaderboard,
-        userStats: finalUserStats
-      };
-      localStorage.setItem(cacheKey, JSON.stringify(cachePayload));
-      const timeStr = new Date(nowMs).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      setLastUpdatedTime(timeStr);
-      
-    } catch (e) {
-      console.error("Error loading Best Seller Challenge remote stats:", e);
-    } finally {
-      setLoadingStats(false);
-    }
-  }, [profile?.id, profile?.full_name, profile?.country_code, userStats]);
+    // Re-assign sequential rank numbers and appropriate colors after sort
+    fetchedLeaderboard.forEach((item, idx) => {
+      item.rank = idx + 1;
+      if (item.isCurrentUser) {
+        item.avatarColor = "from-yellow-400 via-pink-500 to-purple-600";
+      } else if (idx === 0) {
+        item.avatarColor = "from-yellow-400 to-amber-600";
+      } else {
+        item.avatarColor = "from-[#1f1f1d] to-[#121211]";
+      }
+    });
+    
+    setLeaderboard(fetchedLeaderboard);
+    
+    // Save results to cache payload
+    const cachePayload = {
+      timestamp: nowMs,
+      leaderboard: fetchedLeaderboard,
+      userStats: finalUserStats
+    };
+    localStorage.setItem(cacheKey, JSON.stringify(cachePayload));
+    const timeStr = new Date(nowMs).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    setLastUpdatedTime(timeStr);
+    setLoadingStats(false);
+  }, [profile?.id, profile?.full_name, profile?.country_code]);
 
   useEffect(() => {
     loadData();
@@ -503,6 +641,17 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
             </span>
             <span className="text-[10px] uppercase tracking-wider font-mono text-neutral-400">Contest Live Actif</span>
           </div>
+          <span className="h-4 w-px bg-white/10 hidden xs:block" />
+          <button
+            onClick={() => {
+              playChime('click');
+              startAxisExplanation();
+            }}
+            className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-mono bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 px-2 py-1 rounded transition-all"
+          >
+            <Sparkles size={11} className="animate-pulse" />
+            <span>Guide Axis 👁️</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
@@ -549,14 +698,36 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
           🏆⚔️ <span className="bg-gradient-to-r from-amber-200 via-yellow-400 to-pink-500 bg-clip-text text-transparent">CHALLENGE DU MEILLEUR VENDEUR MZ+</span> ⚔️🏆
         </motion.h1>
 
-        <motion.p 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="mt-6 text-sm sm:text-base md:text-lg text-neutral-300 max-w-2xl leading-relaxed"
+        {/* MAGNIFICENT MARKETING BANNER PROMOTING THE PRIZE */}
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+          className="mt-8 relative overflow-hidden bg-gradient-to-b from-[#1c120c] via-[#0f0a05] to-[#050402] border border-yellow-500/30 rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-[0_0_50px_rgba(234,179,8,0.12)] group flex flex-col items-center"
         >
-          Convertissez vos visiteurs de boutique en acheteurs qualifiés ! Le titre suprême de <b>Master Convertisseur MZ+</b> de la semaine se décide à la force de votre taux de conversion.
-        </motion.p>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 blur-3xl rounded-full" />
+          <div className="absolute -bottom-8 -left-8 w-24 h-24 bg-amber-500/10 blur-2xl rounded-full" />
+          
+          <div className="w-16 h-16 bg-gradient-to-br from-yellow-400/20 to-amber-500/20 rounded-full border border-yellow-500/40 flex items-center justify-center text-3xl mb-4 shadow-[0_0_20px_rgba(234,179,8,0.25)]">
+            🏆
+          </div>
+          
+          <span className="text-[10px] tracking-wider uppercase font-mono text-yellow-400 font-extrabold block mb-1">
+            Le Champion Suprême (Top 1)
+          </span>
+
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-none">
+            Gagne <span className="bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 bg-clip-text text-transparent font-black font-mono tracking-wider">{formattedReward}</span> Cash !
+          </h2>
+          
+          <p className="mt-4 text-sm sm:text-base text-neutral-200 font-bold max-w-md">
+            Sois le premier du classement avant dimanche ce soir et obtiens ta récompense !
+          </p>
+
+          <span className="text-[11px] text-neutral-400 block mt-3 border-t border-white/5 pt-3 w-full text-center">
+            ⚡ Virement instantané par MTN, Orange, Moov ou Wave, payé dimanche dès 21h00 précises.
+          </span>
+        </motion.div>
 
         {/* Sunday Countdown display */}
         {timeLeft && (
@@ -617,40 +788,9 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
       {/* CORE SYSTEM GRID LAYOUT */}
       <main className="max-w-7xl mx-auto px-4 py-12 grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* LEFT COLUMN: VISUAL TARGET & REWARDS (5 COLS) */}
+        {/* LEFT COLUMN: VISUAL STATUS & PERSONAL METRICS (5 COLS) */}
         <div className="lg:col-span-5 flex flex-col gap-6">
           
-          {/* REWARDS CARD */}
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            className="relative bg-gradient-to-b from-[#110B1E]/95 to-[#07050B]/95 border border-purple-500/25 rounded-3xl p-6 overflow-hidden shadow-2xl"
-          >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 blur-3xl rounded-full" />
-            
-            <h3 className="text-lg font-bold flex items-center gap-2 border-b border-white/5 pb-4 mb-5 text-white/90">
-              <Trophy className="text-yellow-400" size={18} />
-              <span>Gains & Récompenses Directes</span>
-            </h3>
-
-            {/* Top 1 Reward detailed */}
-            <div className="relative group overflow-hidden bg-neutral-900/80 p-4 rounded-2xl border border-yellow-500/35 flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-yellow-400/20 to-amber-500/20 rounded-full border border-yellow-500/40 flex items-center justify-center text-2xl shrink-0 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
-                🏆
-              </div>
-              <div>
-                <span className="text-[10px] tracking-wider uppercase font-mono text-yellow-400 font-extrabold block mb-0.5">Le Champion Suprême (Top 1)</span>
-                <span className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 bg-clip-text text-transparent font-mono tracking-wider block">
-                  {formattedReward} Cash
-                </span>
-                <span className="text-xs text-neutral-300 block mt-0.5">
-                  Virement instantané par MTN, Orange, Moov ou Wave, payé dimanche dès 21h00 précises.
-                </span>
-              </div>
-            </div>
-          </motion.div>
-
           {/* STATUT DÉTERMINATION & COMPORTEMENT EN DIRECT */}
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
@@ -674,7 +814,7 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
                   return (
                     <div className={`p-4 rounded-2xl border text-center ${
                       isQualified
-                        ? 'bg-yellow-500/10 border-yellow-500/30'
+                        ? 'bg-yellow-500/10 border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.05)]'
                         : 'bg-purple-950/10 border-purple-500/20'
                     }`}>
                       <span className="text-[10px] uppercase font-mono text-neutral-400 block tracking-wider">Votre Position Officielle</span>
@@ -700,8 +840,8 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
                 <div className="pt-2 flex flex-col gap-2">
                   <button 
                     onClick={() => {
-                      playChime('click');
-                      loadData(true);
+                       playChime('click');
+                       loadData(true);
                     }}
                     disabled={loadingStats}
                     className="w-full bg-neutral-950 hover:bg-neutral-900 border border-white/10 text-neutral-300 font-mono text-[11px] py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 hover:border-purple-500/30"
@@ -721,12 +861,7 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
               </div>
             )}
           </motion.div>
-        </div>
 
-
-        {/* RIGHT COLUMN: CURRENT LIVE STANDINGS & PERSONAL BOARD (7 COLS) */}
-        <div className="lg:col-span-7 flex flex-col gap-6">
-          
           {/* MY PERSONAL COMPETITOR STATISTICS CARD */}
           {profile ? (
             <motion.div 
@@ -759,16 +894,16 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
               ) : userStats ? (
                 <div className="mt-6 grid grid-cols-3 gap-3">
                   <div className="bg-neutral-950 p-3 rounded-2xl border border-white/5 text-center">
-                    <span className="text-[10px] text-neutral-400 block uppercase font-mono tracking-wider">Vos Visiteurs</span>
-                    <span className="text-xl sm:text-2xl font-mono font-black text-white mt-1 block">{userStats.visits}</span>
+                    <span className="text-[10px] text-neutral-400 block uppercase font-mono tracking-wider">Visiteurs</span>
+                    <span className="text-xl font-mono font-black text-white mt-1 block">{userStats.visits}</span>
                   </div>
                   <div className="bg-neutral-950 p-3 rounded-2xl border border-white/5 text-center">
-                    <span className="text-[10px] text-neutral-400 block uppercase font-mono tracking-wider">Vos Ventes</span>
-                    <span className="text-xl sm:text-2xl font-mono font-black text-white mt-1 block">{userStats.sales}</span>
+                    <span className="text-[10px] text-neutral-400 block uppercase font-mono tracking-wider">Ventes</span>
+                    <span className="text-xl font-mono font-black text-white mt-1 block">{userStats.sales}</span>
                   </div>
                   <div className="bg-[#110515] p-3 rounded-2xl border border-purple-500/20 text-center">
                     <span className="text-[10px] text-purple-400 block uppercase font-mono tracking-wider">Taux Actuel</span>
-                    <span className="text-xl sm:text-2xl font-mono font-black text-purple-400 mt-1 block">{userStats.conversion}%</span>
+                    <span className="text-xl font-mono font-black text-purple-400 mt-1 block">{userStats.conversion}%</span>
                   </div>
                 </div>
               ) : null}
@@ -844,6 +979,11 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
               )}
             </motion.div>
           )}
+        </div>
+
+
+        {/* RIGHT COLUMN: CURRENT LIVE STANDINGS (7 COLS) */}
+        <div className="lg:col-span-7 flex flex-col gap-6">
 
           {/* STANDINGS LIVE BOARD CARD */}
           <motion.div 

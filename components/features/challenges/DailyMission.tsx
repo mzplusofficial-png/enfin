@@ -77,6 +77,7 @@ const MISSIONS = [
         .from('commissions')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', profile.id)
+        .in('status', ['approved', 'finalized'])
         .gte('created_at', today);
       return (count || 0) >= 1;
     }
