@@ -97,9 +97,9 @@ export const StoreStats: React.FC<StoreStatsProps> = ({ profile, initialProductI
 
   const periodVisits = useMemo(() => {
     // Return actual real-time click stats from the product_stats table to ensure
-    // accurate reporting.
-    return totalVisits;
-  }, [totalVisits]);
+    // accurate reporting. We ensure visits are at least equal to totalSales.
+    return Math.max(totalVisits, totalSales);
+  }, [totalVisits, totalSales]);
 
   const conversionRate = useMemo(() => {
     if (periodVisits === 0) return 0;

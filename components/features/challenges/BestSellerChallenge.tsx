@@ -351,7 +351,7 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
     dbUsersList.forEach(user => {
       const clicks = clicksByUser[user.id] || 0;
       const sales = salesByUser[user.id] || 0;
-      const visits = clicks; // Strictly real visits/clicks from database
+      const visits = Math.max(clicks, sales);
       const conversionRate = visits > 0 ? parseFloat(((sales / visits) * 100).toFixed(2)) : 0.0;
       
       if (visits > 0 || sales > 0) {
@@ -372,7 +372,7 @@ export const BestSellerChallenge: React.FC<BestSellerChallengeProps> = ({
     if (activeUserId) {
       const userClicks = clicksByUser[activeUserId] || 0;
       const userSales = salesByUser[activeUserId] || 0;
-      const userVisits = userClicks; // Strictly real visits/clicks from database
+      const userVisits = Math.max(userClicks, userSales);
       const userConv = userVisits > 0 ? parseFloat(((userSales / userVisits) * 100).toFixed(2)) : 0.0;
       
       finalUserStats = {
